@@ -9,7 +9,7 @@ mod watch;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use tauri::{Manager, State};
+use tauri::State;
 use watch::{now_ms, Shared};
 
 #[derive(Serialize)]
@@ -192,15 +192,54 @@ async fn set_global_suspend(on: bool) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || power::set_global(on)).await.map_err(|e| e.to_string())?
 }
 
+fn show_error(msg: &str) {
+    use windows::core::{w, PCWSTR};
+    use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    let wmsg: Vec<u16> = msg.encode_utf16().chain([0]).collect();
+    unsafe {
+        MessageBoxW(None, PCWSTR(wmsg.as_ptr()), w!("USB 見張り"), MB_OK | MB_ICONERROR);
+    }
+}
+
 fn main() {
     let shared: Shared = Arc::new(Mutex::new(watch::Counters::default()));
     tauri::Builder::default()
         .manage(shared.clone())
         .setup(move |app| {
             watch::start(app.handle().clone(), shared.clone());
-            if let Some(w) = app.get_webview_window("main") {
-                let title = if is_admin() { "USB 見張り（管理者）" } else { "USB 見張り" };
-                let _ = w.set_title(title);
+            let title = if is_admin() { "USB 見張り（管理者）" } else { "USB 見張り" };
+            // 窓はここで作る (試験用のビルドだけ、外から画面を操作する口 9333 番を開くため)
+            let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
+            if cfg!(debug_assertions) {
+                args.push_str(" --remote-debugging-port=9333");
+            }
+            // 画面の部品 (WebView2) の作業フォルダーは、普通・管理者・試験用で分ける。
+            // 同じフォルダーを権限や設定の違う窓が同時に使うと、後から開いた方が開けない
+            // (「管理者で開き直す」で前の窓の部品がまだ残っているときなど)。
+            let mut folder = String::from("webview");
+            if is_admin() {
+                folder.push_str("-admin");
+            }
+            if cfg!(debug_assertions) {
+                folder.push_str("-debug");
+            }
+            let data_dir = std::env::var_os("LOCALAPPDATA")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(std::env::temp_dir)
+                .join("usb-watch")
+                .join(folder);
+            let built = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
+                .title(title)
+                .inner_size(1180.0, 800.0)
+                .min_inner_size(760.0, 520.0)
+                .additional_browser_args(&args)
+                .data_directory(data_dir)
+                .build();
+            if let Err(e) = built {
+                show_error(&format!(
+                    "画面を開けませんでした。\n\nUSB 見張りがもう開いていないか確かめて、閉じてからもう一度開いてください。\n\n詳しい理由: {e}"
+                ));
+                std::process::exit(1);
             }
             Ok(())
         })

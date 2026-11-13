@@ -856,11 +856,15 @@
       document.getElementById("dlgClose").onclick = () => dlg.close();
       dlg.addEventListener("close", () => {
         state.openId = null;
+        for (const k in detailMsgs) delete detailMsgs[k];
       });
 
+      const detailMsgs = {}; // "機器ID|欄" → { text, kind }
       function setMsg(el, text, kind) {
         el.textContent = text;
         el.className = "msgline" + (kind ? " " + kind : "");
+        if (state.openId && ["nameMsg", "enMsg", "pwMsg"].includes(el.id))
+          detailMsgs[up(state.openId) + "|" + el.id] = { text, kind };
       }
 
       function openDetail(id, focusName) {
@@ -988,6 +992,14 @@
       <div class="msgline" id="pwMsg"></div>
     </div>`;
 
+        for (const k of ["nameMsg", "enMsg", "pwMsg"]) {
+          const m = detailMsgs[up(d.id) + "|" + k];
+          const el = document.getElementById(k);
+          if (m && el) {
+            el.textContent = m.text;
+            el.className = "msgline" + (m.kind ? " " + m.kind : "");
+          }
+        }
         const nameMsg = document.getElementById("nameMsg");
         document.getElementById("nameSave").onclick = async () => {
           try {
@@ -1191,12 +1203,16 @@
       }
 
       let refreshTimer = null;
+      let refreshTimer2 = null;
       listen("usb-change", (ev) => {
         state.recent.unshift(ev.payload);
         state.recent = state.recent.slice(0, 20);
         idFound(ev.payload);
         clearTimeout(refreshTimer);
         refreshTimer = setTimeout(refresh, 200);
+        // つながった直後は Windows の準備が終わっていないことがあるので、少し後にもう一度取り直す
+        clearTimeout(refreshTimer2);
+        refreshTimer2 = setTimeout(refresh, 1500);
         renderRecent();
       });
 
