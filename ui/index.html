@@ -1,0 +1,1212 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>USB 見張り</title>
+    <style>
+      :root {
+        --bg: #f6f7f5;
+        --panel: #ffffff;
+        --text: #1b1f1d;
+        --muted: #555d59;
+        --line: #d5dad7;
+        --accent: #16785c;
+        --accent-text: #ffffff;
+        --ok: #17703f;
+        --ok-bg: #e2f3e8;
+        --bad: #b3261e;
+        --bad-bg: #fbe4e1;
+        --off: #8a5a00;
+        --off-bg: #fbefd6;
+        --gone: #5f6662;
+        --gone-bg: #eceeed;
+        --new: #17703f;
+        --new-bg: #e2f3e8;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #161a18;
+          --panel: #1f2422;
+          --text: #eef2f0;
+          --muted: #aab3ae;
+          --line: #38403c;
+          --accent: #3fbf93;
+          --accent-text: #0d1512;
+          --ok: #7ee0a6;
+          --ok-bg: #1d3a29;
+          --bad: #ff9c92;
+          --bad-bg: #45211d;
+          --off: #f2c46b;
+          --off-bg: #3d3018;
+          --gone: #b5bdb9;
+          --gone-bg: #2b312e;
+          --new: #7ee0a6;
+          --new-bg: #1d3a29;
+        }
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--text);
+        font-family: "Yu Gothic UI", "Meiryo UI", "Segoe UI", sans-serif;
+        font-size: 16px;
+        line-height: 1.55;
+      }
+      header {
+        padding: 12px 16px;
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+      }
+      header h1 {
+        font-size: 20px;
+        margin: 0;
+      }
+      .admin-note {
+        flex: 1;
+        min-width: 260px;
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        color: var(--muted);
+      }
+      button {
+        font: inherit;
+        white-space: nowrap;
+        font-size: 15px;
+        padding: 7px 14px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+        color: var(--text);
+        cursor: pointer;
+        min-height: 38px;
+      }
+      button:hover {
+        border-color: var(--accent);
+      }
+      button:focus-visible,
+      input:focus-visible {
+        outline: 3px solid var(--accent);
+        outline-offset: 1px;
+      }
+      button.primary {
+        background: var(--accent);
+        color: var(--accent-text);
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      button.danger {
+        color: var(--bad);
+        border-color: var(--bad);
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: default;
+      }
+      main {
+        padding: 12px 16px 40px;
+      }
+      .recent {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .change {
+        display: flex;
+        gap: 12px;
+        align-items: baseline;
+        flex-wrap: wrap;
+        padding: 8px 12px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--panel);
+      }
+      .change.arrived {
+        border-left: 6px solid var(--new);
+      }
+      .change.removed {
+        border-left: 6px solid var(--bad);
+      }
+      .change.status {
+        border-left: 6px solid var(--off);
+      }
+      .change.fresh {
+        animation: flash 2.5s ease-out;
+      }
+      @keyframes flash {
+        from {
+          background: var(--new-bg);
+        }
+        to {
+          background: var(--panel);
+        }
+      }
+      .change .t {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+      .change .k {
+        font-weight: 700;
+      }
+      .idbox {
+        padding: 12px;
+        border-radius: 10px;
+        border: 2px dashed var(--line);
+        background: var(--panel);
+        margin-bottom: 12px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .idbox.waiting {
+        border-color: var(--accent);
+        border-style: solid;
+      }
+      .idbox.found {
+        border-color: var(--ok);
+        border-style: solid;
+        background: var(--ok-bg);
+      }
+      .idbox .msg {
+        flex: 1;
+        min-width: 240px;
+      }
+      .tabs {
+        display: flex;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-bottom: 10px;
+      }
+      .tabs button[aria-selected="true"] {
+        background: var(--accent);
+        color: var(--accent-text);
+        border-color: var(--accent);
+        font-weight: 600;
+      }
+      .filters {
+        display: flex;
+        gap: 16px;
+        flex-wrap: wrap;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .filters label {
+        display: flex;
+        gap: 6px;
+        align-items: center;
+        cursor: pointer;
+      }
+      .filters input[type="checkbox"] {
+        width: 20px;
+        height: 20px;
+      }
+      input[type="text"] {
+        font: inherit;
+        padding: 7px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: var(--bg);
+        color: var(--text);
+        min-width: 220px;
+      }
+      .tablewrap {
+        overflow-x: auto;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+      }
+      table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      th,
+      td {
+        text-align: left;
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        font-size: 14px;
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      tr.row {
+        cursor: pointer;
+      }
+      tr.row:hover td {
+        background: var(--bg);
+      }
+      tr.flap td:first-child {
+        box-shadow: inset 6px 0 0 var(--bad);
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 14px;
+      }
+      .badge {
+        display: inline-block;
+        padding: 1px 10px;
+        border-radius: 999px;
+        font-size: 14px;
+        font-weight: 600;
+        white-space: nowrap;
+      }
+      .badge.ok {
+        color: var(--ok);
+        background: var(--ok-bg);
+      }
+      .badge.problem {
+        color: var(--bad);
+        background: var(--bad-bg);
+      }
+      .badge.disabled {
+        color: var(--off);
+        background: var(--off-bg);
+      }
+      .badge.absent {
+        color: var(--gone);
+        background: var(--gone-bg);
+      }
+      .flapnote {
+        color: var(--bad);
+        font-weight: 700;
+        font-size: 14px;
+      }
+      .num {
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+      }
+      .tree ul {
+        list-style: none;
+        margin: 0;
+        padding-left: 26px;
+        border-left: 2px solid var(--line);
+      }
+      .tree > ul {
+        padding-left: 0;
+        border-left: none;
+      }
+      .tree li {
+        margin: 4px 0;
+      }
+      .node {
+        display: inline-flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+        padding: 4px 10px;
+        border-radius: 8px;
+        background: var(--panel);
+        border: 1px solid var(--line);
+      }
+      .node.flap {
+        border-color: var(--bad);
+        border-width: 2px;
+      }
+      .node button {
+        min-height: 32px;
+        padding: 3px 10px;
+        font-size: 14px;
+      }
+      .hist {
+        display: grid;
+        gap: 6px;
+      }
+      .card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 14px 16px;
+        margin-bottom: 12px;
+      }
+      .card h2 {
+        font-size: 17px;
+        margin: 0 0 6px;
+      }
+      .card p {
+        margin: 4px 0 10px;
+        color: var(--muted);
+      }
+      .row-btns {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .state {
+        font-weight: 700;
+      }
+      dialog {
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        background: var(--panel);
+        color: var(--text);
+        padding: 0;
+        width: min(720px, calc(100vw - 32px));
+        max-height: calc(100vh - 40px);
+      }
+      dialog::backdrop {
+        background: rgba(0, 0, 0, 0.45);
+      }
+      .dlg-head {
+        padding: 14px 18px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        align-items: center;
+      }
+      .dlg-head h2 {
+        margin: 0;
+        font-size: 18px;
+      }
+      .dlg-body {
+        padding: 14px 18px;
+        overflow-y: auto;
+      }
+      .kv {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 4px 14px;
+        margin-bottom: 14px;
+      }
+      .kv dt {
+        color: var(--muted);
+      }
+      .kv dd {
+        margin: 0;
+        word-break: break-all;
+      }
+      .section {
+        border-top: 1px solid var(--line);
+        padding: 12px 0;
+      }
+      .section h3 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .msgline {
+        min-height: 1.5em;
+        margin-top: 6px;
+      }
+      .msgline.err {
+        color: var(--bad);
+        font-weight: 600;
+      }
+      .msgline.good {
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .empty {
+        color: var(--muted);
+        padding: 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>USB 見張り</h1>
+      <div class="admin-note" id="adminNote"></div>
+    </header>
+    <main>
+      <div class="recent" id="recent" aria-live="polite"></div>
+
+      <div class="idbox" id="idbox">
+        <div class="msg" id="idmsg">
+          <b>どの機器か調べる：</b>ボタンを押してから、USB
+          機器を1つ抜く（またはさす）と、それが何だったかを表示します。
+        </div>
+        <div class="row-btns" id="idbtns">
+          <button class="primary" id="idStart">抜いて調べる</button>
+        </div>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button role="tab" data-tab="list" aria-selected="true">一覧</button>
+        <button role="tab" data-tab="tree" aria-selected="false">
+          つながり方
+        </button>
+        <button role="tab" data-tab="hist" aria-selected="false">履歴</button>
+        <button role="tab" data-tab="settings" aria-selected="false">
+          設定
+        </button>
+      </div>
+
+      <section id="tab-list">
+        <div class="filters">
+          <label
+            ><input type="checkbox" id="fAbsent" />
+            つながっていない機器も出す</label
+          >
+          <label
+            ><input type="checkbox" id="fParts" />
+            部品（入力デバイスなど）も出す</label
+          >
+          <label><input type="checkbox" id="fHubs" checked /> ハブも出す</label>
+          <input
+            type="text"
+            id="fText"
+            placeholder="名前で絞り込む"
+            aria-label="名前で絞り込む"
+          />
+          <span class="sub" id="count"></span>
+        </div>
+        <div class="tablewrap">
+          <table>
+            <thead>
+              <tr>
+                <th>名前</th>
+                <th>状態</th>
+                <th>場所</th>
+                <th>外れた回数</th>
+                <th>最後の変化</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="rows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="tab-tree" hidden>
+        <p class="sub">
+          コントローラー（PC本体の USB の口のまとまり）→ ハブ → 機器
+          の順に並べています。赤い枠は、くり返し外れている機器です。
+        </p>
+        <div class="tree" id="tree"></div>
+      </section>
+
+      <section id="tab-hist" hidden>
+        <div class="row-btns" style="margin-bottom: 10px">
+          <button id="histReload">読み直す</button>
+          <button id="openFolder">保存先のフォルダーを開く</button>
+        </div>
+        <div class="hist" id="hist"></div>
+      </section>
+
+      <section id="tab-settings" hidden>
+        <div class="card">
+          <h2>つないだ・外したときの音</h2>
+          <p>
+            Windows
+            が鳴らす「つないだ」「外した」「失敗した」の3つの音です。消すと、ほかの
+            USB 機器でも鳴らなくなります。
+          </p>
+          <div class="row-btns">
+            <span
+              >今：<span class="state" id="soundState"
+                >確かめています</span
+              ></span
+            >
+            <button id="soundOn">音を鳴らす</button>
+            <button id="soundOff">音を消す</button>
+          </div>
+          <div class="msgline" id="soundMsg"></div>
+        </div>
+        <div class="card">
+          <h2>省電力で USB が切れる設定（PC 全体）</h2>
+          <p>
+            電源プランの「USB のセレクティブ
+            サスペンド」です。有効だと、使っていない USB 機器の電源を Windows
+            が切ることがあります。機器ごとの設定は、一覧の「くわしく・操作」から変えられます。
+          </p>
+          <div class="row-btns">
+            <span
+              >今：<span class="state" id="gsState">確かめています</span></span
+            >
+            <button id="gsOff">切らないようにする</button>
+            <button id="gsOn">切ってよい（Windows の標準）</button>
+          </div>
+          <div class="msgline" id="gsMsg"></div>
+        </div>
+        <div class="card">
+          <h2>保存しているもの</h2>
+          <p>
+            自分でつけた名前（names.json）と履歴（history.jsonl）を保存しています。
+          </p>
+          <div class="row-btns">
+            <button id="openFolder2">保存先のフォルダーを開く</button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <dialog id="dlg" aria-labelledby="dlgTitle">
+      <div class="dlg-head">
+        <h2 id="dlgTitle">機器</h2>
+        <button id="dlgClose">閉じる</button>
+      </div>
+      <div class="dlg-body" id="dlgBody"></div>
+    </dialog>
+
+    <script>
+      const { invoke } = window.__TAURI__.core;
+      const { listen } = window.__TAURI__.event;
+
+      const state = {
+        devices: [],
+        controllers: [],
+        names: { devices: {}, ports: {} },
+        admin: false,
+        power: null, // ID(大文字) → 省電力で切ってよいか
+        recent: [],
+        identify: null, // { until, timer }
+        openId: null,
+      };
+
+      const PROBLEMS = {
+        1: "設定がおかしくなっています",
+        3: "ドライバーが壊れているか、メモリーが足りません",
+        10: "機器を始められません",
+        12: "使える資源が足りません",
+        18: "ドライバーを入れ直す必要があります",
+        19: "設定の情報が壊れています",
+        22: "無効にしてあります",
+        24: "機器がないか、正しく動いていません",
+        28: "ドライバーが入っていません",
+        31: "正しく動いていません",
+        43: "機器が失敗を知らせました（よくある原因：ケーブル・接触不良・故障・電力不足）",
+        45: "今はつながっていません",
+      };
+
+      const esc = (s) =>
+        String(s ?? "").replace(
+          /[&<>"']/g,
+          (c) =>
+            ({
+              "&": "&amp;",
+              "<": "&lt;",
+              ">": "&gt;",
+              '"': "&quot;",
+              "'": "&#39;",
+            })[c],
+        );
+      const up = (s) => String(s ?? "").toUpperCase();
+
+      function fmtTime(ms) {
+        if (!ms) return "";
+        const d = new Date(ms);
+        const now = new Date();
+        const hms = d.toLocaleTimeString("ja-JP", {
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        });
+        if (d.toDateString() === now.toDateString()) return hms;
+        return `${d.getMonth() + 1}/${d.getDate()} ${hms}`;
+      }
+
+      function devById(id) {
+        const u = up(id);
+        return (
+          state.devices.find((d) => up(d.id) === u) ||
+          state.controllers.find((d) => up(d.id) === u)
+        );
+      }
+
+      function displayName(d) {
+        if (!d) return "（不明）";
+        return state.names.devices[up(d.id)] || d.name;
+      }
+
+      function portKey(d) {
+        return d.parent && d.port != null ? `${up(d.parent)}|${d.port}` : null;
+      }
+
+      function placeText(d) {
+        const k = portKey(d);
+        if (k && state.names.ports[k]) return state.names.ports[k];
+        const p = d.parent ? devById(d.parent) : null;
+        const pn = p ? displayName(p) : "";
+        if (d.port != null) return `ポート${d.port}` + (pn ? `（${pn}）` : "");
+        return pn || "";
+      }
+
+      function statusBadge(d) {
+        const words = {
+          ok: "正常",
+          problem: "エラー",
+          disabled: "無効",
+          absent: "つながっていない",
+        };
+        let t = words[d.status] || d.status;
+        if (d.status === "problem" && d.problem) t += `（コード${d.problem}）`;
+        return `<span class="badge ${esc(d.status)}">${esc(t)}</span>`;
+      }
+
+      const isFlap = (d) => (d.removed_10min || 0) >= 3;
+
+      function lastChange(d) {
+        const a = d.last_arrived_seen || 0,
+          r = d.last_removed_seen || 0;
+        if (!a && !r) return "";
+        return r > a ? `外れた ${fmtTime(r)}` : `つながった ${fmtTime(a)}`;
+      }
+
+      // ---------- 一覧 ----------
+      function renderList() {
+        const showAbsent = document.getElementById("fAbsent").checked;
+        const showParts = document.getElementById("fParts").checked;
+        const showHubs = document.getElementById("fHubs").checked;
+        const q = document.getElementById("fText").value.trim().toLowerCase();
+        let list = state.devices.filter(
+          (d) =>
+            (showAbsent || d.present) &&
+            (showParts || !d.is_interface) &&
+            (showHubs || !d.is_hub),
+        );
+        if (q)
+          list = list.filter((d) =>
+            [displayName(d), d.name, d.bus_name, d.manufacturer, d.id].some(
+              (s) =>
+                String(s || "")
+                  .toLowerCase()
+                  .includes(q),
+            ),
+          );
+        const rank = (d) =>
+          isFlap(d)
+            ? 0
+            : d.status === "problem"
+              ? 1
+              : d.status === "disabled"
+                ? 2
+                : d.present
+                  ? 3
+                  : 4;
+        list.sort(
+          (a, b) =>
+            rank(a) - rank(b) ||
+            displayName(a).localeCompare(displayName(b), "ja"),
+        );
+        document.getElementById("count").textContent = `${list.length} 台`;
+        const rows = list.map((d) => {
+          const subs = [];
+          if (state.names.devices[up(d.id)]) subs.push(`元の名前：${d.name}`);
+          if (d.bus_name && d.bus_name !== d.name)
+            subs.push(`機器が名乗った名前：${d.bus_name}`);
+          if (d.vid && d.pid && d.vid !== "0000")
+            subs.push(`VID ${d.vid} / PID ${d.pid}`);
+          const flap = isFlap(d)
+            ? `<div class="flapnote">くり返し外れています（10分で${d.removed_10min}回）</div>`
+            : "";
+          return `<tr class="row ${isFlap(d) ? "flap" : ""}" data-id="${esc(d.id)}">
+      <td><div><b>${esc(displayName(d))}</b></div>${subs.map((s) => `<div class="sub">${esc(s)}</div>`).join("")}${flap}</td>
+      <td>${statusBadge(d)}</td>
+      <td>${esc(placeText(d))}</td>
+      <td class="num">${d.removed_10min || 0}回（10分）<div class="sub">合計 ${d.removed_total || 0}回</div></td>
+      <td class="num">${esc(lastChange(d))}</td>
+      <td><button data-open="${esc(d.id)}">くわしく・操作</button></td>
+    </tr>`;
+        });
+        document.getElementById("rows").innerHTML =
+          rows.join("") ||
+          `<tr><td colspan="6" class="empty">表示する機器がありません</td></tr>`;
+      }
+
+      document.getElementById("rows").addEventListener("click", (e) => {
+        const tr = e.target.closest("[data-id]");
+        if (tr) openDetail(tr.dataset.id);
+      });
+      ["fAbsent", "fParts", "fHubs"].forEach((id) =>
+        document.getElementById(id).addEventListener("change", renderList),
+      );
+      document.getElementById("fText").addEventListener("input", renderList);
+
+      // ---------- つながり方 ----------
+      function renderTree() {
+        const present = state.devices.filter((d) => d.present);
+        const kids = {};
+        for (const d of present) {
+          const p = up(d.parent);
+          (kids[p] ||= []).push(d);
+        }
+        for (const k in kids)
+          kids[k].sort((a, b) => (a.port ?? 999) - (b.port ?? 999));
+        const node = (d, depth) => {
+          const ch = depth < 12 ? kids[up(d.id)] || [] : [];
+          const port =
+            d.port != null ? `<span class="sub">ポート${d.port}</span>` : "";
+          const btn = state.devices.includes(d)
+            ? `<button data-open="${esc(d.id)}">くわしく・操作</button>`
+            : "";
+          return `<li><span class="node ${isFlap(d) ? "flap" : ""}">${port}<b>${esc(displayName(d))}</b>${state.devices.includes(d) ? statusBadge(d) : ""}${isFlap(d) ? `<span class="flapnote">くり返し外れています</span>` : ""}${btn}</span>
+      ${ch.length ? `<ul>${ch.map((c) => node(c, depth + 1)).join("")}</ul>` : ""}</li>`;
+        };
+        const roots = state.controllers
+          .slice()
+          .sort((a, b) => displayName(a).localeCompare(displayName(b), "ja"));
+        document.getElementById("tree").innerHTML =
+          `<ul>${roots.map((c) => node(c, 0)).join("")}</ul>`;
+      }
+      document.getElementById("tree").addEventListener("click", (e) => {
+        const b = e.target.closest("[data-open]");
+        if (b) openDetail(b.dataset.open);
+      });
+
+      // ---------- 変化の表示 ----------
+      const KIND_WORD = {
+        arrived: "つながりました",
+        removed: "外れました",
+        status: "状態が変わりました",
+      };
+      function changeHtml(ch, fresh) {
+        const items = ch.items
+          .map((it) => {
+            const d = devById(it.id);
+            const nm = state.names.devices[up(it.id)] || it.name;
+            const place = d
+              ? placeText(d)
+              : it.port != null
+                ? `ポート${it.port}`
+                : "";
+            const parts = it.parts ? `（部品${it.parts}個も一緒に）` : "";
+            const st =
+              ch.kind === "status"
+                ? ` → ${{ ok: "正常", problem: "エラー", disabled: "無効" }[it.status] || it.status}`
+                : "";
+            return `<span><b>${esc(nm)}</b>${esc(st)} <span class="sub">${esc(place)}${esc(parts)}</span></span>`;
+          })
+          .join("、");
+        return `<div class="change ${esc(ch.kind)} ${fresh ? "fresh" : ""}"><span class="t">${esc(fmtTime(ch.time))}</span><span class="k">${KIND_WORD[ch.kind] || ch.kind}</span>${items}</div>`;
+      }
+      function renderRecent() {
+        document.getElementById("recent").innerHTML = state.recent
+          .slice(0, 4)
+          .map((ch, i) =>
+            changeHtml(ch, i === 0 && Date.now() - ch.time < 3000),
+          )
+          .join("");
+      }
+
+      // ---------- 抜いて当てる ----------
+      const idbox = document.getElementById("idbox"),
+        idmsg = document.getElementById("idmsg"),
+        idbtns = document.getElementById("idbtns");
+      function idReset() {
+        if (state.identify) clearInterval(state.identify.timer);
+        state.identify = null;
+        idbox.className = "idbox";
+        idmsg.innerHTML =
+          "<b>どの機器か調べる：</b>ボタンを押してから、USB 機器を1つ抜く（またはさす）と、それが何だったかを表示します。";
+        idbtns.innerHTML = `<button class="primary" id="idStart">抜いて調べる</button>`;
+        document.getElementById("idStart").onclick = idStart;
+      }
+      function idStart() {
+        const until = Date.now() + 60000;
+        idbox.className = "idbox waiting";
+        idbtns.innerHTML = `<button id="idCancel">やめる</button>`;
+        document.getElementById("idCancel").onclick = idReset;
+        const tick = () => {
+          const left = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+          idmsg.innerHTML = `<b>待っています：</b>調べたい USB 機器を1つ抜いてください（さしても分かります）。のこり ${left} 秒`;
+          if (left <= 0) idReset();
+        };
+        state.identify = { until, timer: setInterval(tick, 500) };
+        tick();
+      }
+      function idFound(ch) {
+        if (!state.identify || ch.kind === "status" || !ch.items.length) return;
+        clearInterval(state.identify.timer);
+        state.identify = null;
+        idbox.className = "idbox found";
+        const it = ch.items[0];
+        const d = devById(it.id);
+        const nm = state.names.devices[up(it.id)] || it.name;
+        const place = d
+          ? placeText(d)
+          : it.port != null
+            ? `ポート${it.port}`
+            : "";
+        const verb = ch.kind === "removed" ? "今抜いたのは" : "今さしたのは";
+        const more =
+          ch.items.length > 1
+            ? `<div class="sub">ほかに ${ch.items.length - 1} 台も同時に変わりました。</div>`
+            : "";
+        const bus =
+          it.bus_name && it.bus_name !== it.name
+            ? `<div class="sub">機器が名乗った名前：${esc(it.bus_name)}</div>`
+            : "";
+        idmsg.innerHTML = `<b>${verb}：</b><span style="font-size:18px"><b>${esc(nm)}</b></span><div>場所：${esc(place) || "不明"}</div>${bus}${more}`;
+        idbtns.innerHTML = `<button class="primary" id="idName">この機器に名前をつける</button><button id="idAgain">もう一度調べる</button><button id="idClose">閉じる</button>`;
+        document.getElementById("idName").onclick = () =>
+          openDetail(it.id, true);
+        document.getElementById("idAgain").onclick = idStart;
+        document.getElementById("idClose").onclick = idReset;
+      }
+      document.getElementById("idStart").onclick = idStart;
+
+      // ---------- くわしく・操作 ----------
+      const dlg = document.getElementById("dlg");
+      document.getElementById("dlgClose").onclick = () => dlg.close();
+      dlg.addEventListener("close", () => {
+        state.openId = null;
+      });
+
+      function setMsg(el, text, kind) {
+        el.textContent = text;
+        el.className = "msgline" + (kind ? " " + kind : "");
+      }
+
+      function openDetail(id, focusName) {
+        state.openId = id;
+        renderDetail();
+        if (!dlg.open) dlg.showModal();
+        if (focusName)
+          setTimeout(() => document.getElementById("nameIn")?.focus(), 50);
+      }
+
+      function renderDetail() {
+        const d = devById(state.openId);
+        const body = document.getElementById("dlgBody");
+        if (!d) {
+          document.getElementById("dlgTitle").textContent = "機器";
+          body.innerHTML = `<p>この機器は一覧から消えました。</p>`;
+          return;
+        }
+        document.getElementById("dlgTitle").textContent = displayName(d);
+        const pk = portKey(d);
+        const kidsOf = (x) =>
+          state.devices.filter((c) => c.present && up(c.parent) === up(x.id));
+        const desc = [];
+        const walk = (x, depth) => {
+          if (depth > 8) return;
+          for (const c of kidsOf(x)) {
+            desc.push(c);
+            walk(c, depth + 1);
+          }
+        };
+        walk(d, 0);
+        let pwIds = [];
+        if (state.power) {
+          if (state.power[up(d.id)] !== undefined) pwIds = [d.id];
+          else if (!d.is_hub)
+            pwIds = desc
+              .filter((c) => state.power[up(c.id)] !== undefined)
+              .map((c) => c.id);
+        }
+        const pwVals = pwIds.map((i) => state.power[up(i)]);
+        const pw = !pwIds.length
+          ? undefined
+          : pwVals.every(Boolean)
+            ? true
+            : pwVals.some(Boolean)
+              ? "mixed"
+              : false;
+        const pwText =
+          state.power == null
+            ? "確かめています"
+            : pw === undefined
+              ? "この機器には設定がありません"
+              : pw === "mixed"
+                ? "部品によって違います"
+                : pw
+                ? "切ってよい（省電力のときに切れることがあります）"
+                : "切らせない";
+        const adminNote = state.admin
+          ? ""
+          : `<p class="sub">この操作には管理者の権限が要ります。画面上の「管理者で開き直す」を押してください。</p>`;
+        const problemText =
+          d.status === "problem"
+            ? PROBLEMS[d.problem] || ""
+            : d.status === "disabled"
+              ? PROBLEMS[22]
+              : "";
+        const isInput =
+          [d, ...desc].some(
+            (x) =>
+              /keyboard|mouse|hidclass/i.test(x.class || "") ||
+              /キーボード|マウス|入力デバイス|keyboard|mouse/i.test(
+                (x.name || "") + " " + (x.bus_name || ""),
+              ),
+          );
+        body.innerHTML = `
+    <dl class="kv">
+      <dt>状態</dt><dd>${statusBadge(d)} ${esc(problemText)}</dd>
+      <dt>Windows の名前</dt><dd>${esc(d.name)}</dd>
+      ${d.bus_name ? `<dt>機器が名乗った名前</dt><dd>${esc(d.bus_name)}</dd>` : ""}
+      ${d.manufacturer ? `<dt>メーカー</dt><dd>${esc(d.manufacturer)}</dd>` : ""}
+      ${d.class ? `<dt>種類</dt><dd>${esc(d.class)}</dd>` : ""}
+      <dt>場所</dt><dd>${esc(placeText(d)) || "不明"} ${d.location ? `<span class="sub">（${esc(d.location)}）</span>` : ""}</dd>
+      <dt>外れた回数</dt><dd>10分で ${d.removed_10min || 0} 回 ／ アプリを開いてから ${d.removed_total || 0} 回</dd>
+      ${d.last_arrival ? `<dt>最後につながった</dt><dd>${esc(new Date(d.last_arrival).toLocaleString("ja-JP"))}</dd>` : ""}
+      ${d.last_removal ? `<dt>最後に外れた</dt><dd>${esc(new Date(d.last_removal).toLocaleString("ja-JP"))}</dd>` : ""}
+      <dt>ID</dt><dd class="sub">${esc(d.id)}</dd>
+    </dl>
+    <div class="section">
+      <h3>名前をつける</h3>
+      <div class="row-btns">
+        <input type="text" id="nameIn" value="${esc(state.names.devices[up(d.id)] || "")}" placeholder="例：キーボード" aria-label="機器の名前">
+        <button class="primary" id="nameSave">機器の名前を保存</button>
+      </div>
+      ${
+        pk
+          ? `<div class="row-btns" style="margin-top:8px">
+        <input type="text" id="portIn" value="${esc(state.names.ports[pk] || "")}" placeholder="例：本体の前・左" aria-label="差し込み口の名前">
+        <button id="portSave">差し込み口の名前を保存</button>
+      </div>`
+          : ""
+      }
+      <div class="sub">空にして保存すると、元の名前に戻ります。</div>
+      <div class="msgline" id="nameMsg"></div>
+    </div>
+    <div class="section">
+      <h3>有効・無効</h3>
+      ${adminNote}
+      ${d.is_hub && d.status !== "disabled" ? `<p class="flapnote">ハブを無効にすると、その先につながっている機器も全部使えなくなります。</p>` : ""}
+      ${isInput && d.status !== "disabled" ? `<p class="flapnote">キーボードやマウスを無効にすると、操作できなくなることがあります。</p>` : ""}
+      <div class="row-btns">
+        <button id="btnEnable" ${d.status === "disabled" ? "" : "disabled"}>有効にする</button>
+        <button class="danger" id="btnDisable" ${d.present && d.status !== "disabled" ? "" : "disabled"}>無効にする</button>
+        <button id="btnRestart" ${d.present && d.status !== "disabled" ? "" : "disabled"}>つなぎ直す（無効にしてすぐ戻す）</button>
+      </div>
+      <div class="msgline" id="enMsg"></div>
+    </div>
+    <div class="section">
+      <h3>省電力で切れる設定（この機器）</h3>
+      <p class="sub">デバイスマネージャーの「電力の節約のために、コンピューターでこのデバイスの電源をオフにできるようにする」と同じです。</p>
+      <div class="row-btns">
+        <span>今：<span class="state">${esc(pwText)}</span>${pwIds.length > 1 || (pwIds.length === 1 && pwIds[0] !== d.id) ? `<span class="sub">（部品${pwIds.length}個の設定）</span>` : ""}</span>
+        <button id="pwOff" ${pw === undefined ? "disabled" : ""}>切らせない</button>
+        <button id="pwOn" ${pw === undefined ? "disabled" : ""}>切ってよい</button>
+      </div>
+      <div class="msgline" id="pwMsg"></div>
+    </div>`;
+
+        const nameMsg = document.getElementById("nameMsg");
+        document.getElementById("nameSave").onclick = async () => {
+          try {
+            state.names = await invoke("set_device_name", {
+              id: d.id,
+              name: document.getElementById("nameIn").value,
+            });
+            setMsg(nameMsg, "保存しました", "good");
+            renderAll(false);
+            document.getElementById("dlgTitle").textContent = displayName(d);
+          } catch (e) {
+            setMsg(nameMsg, String(e), "err");
+          }
+        };
+        if (pk)
+          document.getElementById("portSave").onclick = async () => {
+            try {
+              state.names = await invoke("set_port_name", {
+                key: pk,
+                name: document.getElementById("portIn").value,
+              });
+              setMsg(nameMsg, "保存しました", "good");
+              renderAll(false);
+            } catch (e) {
+              setMsg(nameMsg, String(e), "err");
+            }
+          };
+        const enMsg = document.getElementById("enMsg");
+        const run = async (cmd, args, doing, done) => {
+          setMsg(enMsg, doing);
+          try {
+            await invoke(cmd, args);
+            setMsg(enMsg, done, "good");
+            await refresh();
+          } catch (e) {
+            setMsg(enMsg, String(e), "err");
+          }
+        };
+        document.getElementById("btnEnable").onclick = () =>
+          run(
+            "set_enabled",
+            { id: d.id, enabled: true },
+            "有効にしています…",
+            "有効にしました",
+          );
+        document.getElementById("btnDisable").onclick = () => {
+          if (
+            isInput &&
+            !confirm(
+              "キーボードやマウスかもしれません。無効にすると操作できなくなることがあります。無効にしますか？",
+            )
+          )
+            return;
+          run(
+            "set_enabled",
+            { id: d.id, enabled: false },
+            "無効にしています…",
+            "無効にしました",
+          );
+        };
+        document.getElementById("btnRestart").onclick = () =>
+          run(
+            "restart_device",
+            { id: d.id },
+            "つなぎ直しています…",
+            "つなぎ直しました",
+          );
+        const pwMsg = document.getElementById("pwMsg");
+        const setPw = async (allow) => {
+          setMsg(pwMsg, "変えています…");
+          try {
+            for (const i of pwIds) await invoke("set_power", { id: i, allow });
+            await loadPower();
+            renderDetail();
+            setMsg(document.getElementById("pwMsg"), "変えました", "good");
+          } catch (e) {
+            setMsg(pwMsg, String(e), "err");
+          }
+        };
+        document.getElementById("pwOff").onclick = () => setPw(false);
+        document.getElementById("pwOn").onclick = () => setPw(true);
+      }
+
+      // ---------- 履歴 ----------
+      async function loadHistory() {
+        const h = await invoke("get_history", { limit: 500 });
+        document.getElementById("hist").innerHTML =
+          h.map((ch) => changeHtml(ch, false)).join("") ||
+          `<div class="empty">まだ記録がありません</div>`;
+      }
+      document.getElementById("histReload").onclick = loadHistory;
+      document.getElementById("openFolder").onclick = () =>
+        invoke("open_data_folder");
+      document.getElementById("openFolder2").onclick = () =>
+        invoke("open_data_folder");
+
+      // ---------- 設定 ----------
+      async function loadSound() {
+        const s = await invoke("get_sound");
+        const on = Object.values(s).filter(Boolean).length;
+        document.getElementById("soundState").textContent =
+          on === 3 ? "鳴る" : on === 0 ? "鳴らない" : `一部だけ鳴る（${on}/3）`;
+      }
+      async function setSound(on) {
+        const m = document.getElementById("soundMsg");
+        try {
+          await invoke("set_sound", { on });
+          await loadSound();
+          setMsg(m, on ? "音を鳴らすようにしました" : "音を消しました", "good");
+        } catch (e) {
+          setMsg(m, String(e), "err");
+        }
+      }
+      document.getElementById("soundOn").onclick = () => setSound(true);
+      document.getElementById("soundOff").onclick = () => setSound(false);
+
+      async function loadGlobal() {
+        try {
+          const g = await invoke("get_global_suspend");
+          const w = (b) => (b ? "切ってよい" : "切らない");
+          document.getElementById("gsState").textContent =
+            g.ac === g.dc
+              ? w(g.ac)
+              : `電源につないだとき：${w(g.ac)}／電池のとき：${w(g.dc)}`;
+        } catch (e) {
+          document.getElementById("gsState").textContent = "読めませんでした";
+        }
+      }
+      async function setGlobal(on) {
+        const m = document.getElementById("gsMsg");
+        try {
+          await invoke("set_global_suspend", { on });
+          await loadGlobal();
+          setMsg(m, "変えました", "good");
+        } catch (e) {
+          setMsg(m, String(e), "err");
+        }
+      }
+      document.getElementById("gsOff").onclick = () => setGlobal(false);
+      document.getElementById("gsOn").onclick = () => setGlobal(true);
+
+      // ---------- タブ ----------
+      document.querySelectorAll("[data-tab]").forEach((b) =>
+        b.addEventListener("click", () => {
+          document
+            .querySelectorAll("[data-tab]")
+            .forEach((x) => x.setAttribute("aria-selected", String(x === b)));
+          for (const t of ["list", "tree", "hist", "settings"])
+            document.getElementById("tab-" + t).hidden = t !== b.dataset.tab;
+          if (b.dataset.tab === "hist") loadHistory();
+          if (b.dataset.tab === "settings") {
+            loadSound();
+            loadGlobal();
+          }
+        }),
+      );
+
+      // ---------- 管理者 ----------
+      async function loadAdmin() {
+        state.admin = await invoke("check_admin");
+        const el = document.getElementById("adminNote");
+        if (state.admin) {
+          el.innerHTML = `<span>管理者で動いています。有効・無効の切り替えができます。</span>`;
+        } else {
+          el.innerHTML = `<span>今は普通の権限です。見るだけならこのままで使えます。有効・無効の切り替えには管理者の権限が要ります。</span><button class="primary" id="relaunch">管理者で開き直す</button>`;
+          document.getElementById("relaunch").onclick = async () => {
+            try {
+              await invoke("relaunch_admin");
+            } catch (e) {
+              alert(String(e));
+            }
+          };
+        }
+      }
+
+      // ---------- 読み込み ----------
+      function renderAll(withRecent = true) {
+        renderList();
+        renderTree();
+        if (withRecent) renderRecent();
+        if (state.openId && dlg.open) {
+          const focused =
+            document.activeElement &&
+            document.activeElement.tagName === "INPUT";
+          if (!focused) renderDetail();
+        }
+      }
+      async function refresh() {
+        const r = await invoke("get_devices");
+        state.devices = r.devices;
+        state.controllers = r.controllers;
+        state.names = r.names;
+        renderAll();
+      }
+      async function loadPower() {
+        try {
+          state.power = await invoke("get_power_states");
+        } catch {
+          state.power = {};
+        }
+      }
+
+      let refreshTimer = null;
+      listen("usb-change", (ev) => {
+        state.recent.unshift(ev.payload);
+        state.recent = state.recent.slice(0, 20);
+        idFound(ev.payload);
+        clearTimeout(refreshTimer);
+        refreshTimer = setTimeout(refresh, 200);
+        renderRecent();
+      });
+
+      (async () => {
+        await loadAdmin();
+        await refresh();
+        const h = await invoke("get_history", { limit: 4 });
+        state.recent = h;
+        renderRecent();
+        loadPower().then(() => {
+          if (dlg.open) renderDetail();
+        });
+      })();
+    </script>
+  </body>
+</html>

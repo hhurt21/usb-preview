@@ -1,0 +1,12 @@
+# 秘密の設定
+.env
+.env.*
+!.env.example
+
+# ビルドの出力
+src-tauri/target/
+src-tauri/gen/
+
+# その他
+*.log
+Thumbs.db
