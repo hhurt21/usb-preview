@@ -133,7 +133,8 @@
       .change.arrived {
         border-left: 6px solid var(--new);
       }
-      .change.removed {
+      .change.removed,
+      .change.blink {
         border-left: 6px solid var(--bad);
       }
       .change.status {
@@ -760,6 +761,7 @@
       const KIND_WORD = {
         arrived: "つながりました",
         removed: "外れました",
+        blink: "外れてすぐ戻りました",
         status: "状態が変わりました",
       };
       function changeHtml(ch, fresh) {
@@ -830,7 +832,8 @@
           : it.port != null
             ? `ポート${it.port}`
             : "";
-        const verb = ch.kind === "removed" ? "今抜いたのは" : "今さしたのは";
+        const verb =
+          ch.kind === "arrived" ? "今さしたのは" : "今抜いたのは";
         const more =
           ch.items.length > 1
             ? `<div class="sub">ほかに ${ch.items.length - 1} 台も同時に変わりました。</div>`
