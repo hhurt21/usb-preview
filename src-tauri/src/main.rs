@@ -85,7 +85,7 @@ fn relaunch_admin(app: tauri::AppHandle) -> Result<(), String> {
             None,
             w!("runas"),
             PCWSTR(wexe.as_ptr()),
-            None,
+            w!("--relaunched"),
             None,
             windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
         )
@@ -201,7 +201,68 @@ fn show_error(msg: &str) {
     }
 }
 
+/// 1 つだけ開くための目印 (名前付きミューテックス)。取れたら true。
+/// 取れたハンドルはアプリが終わるまで持ち続ける。
+fn take_single_instance() -> bool {
+    use windows::core::w;
+    use windows::Win32::Foundation::{CloseHandle, GetLastError, ERROR_ALREADY_EXISTS};
+    use windows::Win32::System::Threading::CreateMutexW;
+    unsafe {
+        match CreateMutexW(None, false, w!("Local\\usb-watch-single-instance")) {
+            Ok(h) => {
+                if GetLastError() == ERROR_ALREADY_EXISTS {
+                    // 自分のハンドルは閉じる (持ったままだと、先の窓が閉じても目印が残る)
+                    let _ = CloseHandle(h);
+                    false
+                } else {
+                    true
+                }
+            }
+            // 管理者の窓が作った目印は、普通の権限からは開けない (= もう開いている)
+            Err(_) => false,
+        }
+    }
+}
+
+/// すでに開いている窓を前に出す。見つからなければ false。
+fn focus_existing() -> bool {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE};
+    unsafe {
+        for title in [w!("USB 見張り"), w!("USB 見張り（管理者）")] {
+            if let Ok(h) = FindWindowW(None, title) {
+                if !h.is_invalid() {
+                    let _ = ShowWindow(h, SW_RESTORE);
+                    let _ = SetForegroundWindow(h);
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
 fn main() {
+    // 2 つ同時に動くと、両方が履歴に書き込んで記録が二重になる
+    let relaunched = std::env::args().any(|a| a == "--relaunched");
+    let mut got = take_single_instance();
+    if !got && relaunched {
+        // 「管理者で開き直す」のときは、前の窓が閉じるのを最大 10 秒待つ
+        for _ in 0..50 {
+            std::thread::sleep(std::time::Duration::from_millis(200));
+            got = take_single_instance();
+            if got {
+                break;
+            }
+        }
+    }
+    if !got {
+        if !focus_existing() {
+            show_error("USB 見張りはもう開いています。");
+        }
+        return;
+    }
+
     let shared: Shared = Arc::new(Mutex::new(watch::Counters::default()));
     tauri::Builder::default()
         .manage(shared.clone())
