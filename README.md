@@ -177,7 +177,7 @@ cargo build --release -j 4
 | `src-tauri/src/main.rs`    | 窓を作る・1つだけ開く・管理者で開き直す・画面から呼ぶ機能の入り口           |
 | `ui/map.js` | 全体図タブ（仕分け・図・線） |
 | `ui/icons.js` | 機器の絵（SVG） |
-| `tools/` | 試験用の道具（画面の操作 `cdp.mjs`、窓の撮影 `shot.py`、置換スクリプト） |
+| `tools/` | 試験用の道具（画面の操作 `cdp.mjs`、窓の撮影 `shot.py`、明るい/暗い画面と幅を変えて撮る `cdp_shot.mjs`、置換スクリプト） |
 | `ui/index.html`            | 画面                                                                        |
 
 ### 見張りの仕組み
