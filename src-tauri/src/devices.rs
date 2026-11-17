@@ -171,6 +171,32 @@ pub fn list(present_only: bool) -> Vec<Dev> {
     out
 }
 
+/// USB に限らず、今つながっている全部の機器
+pub fn list_all_present() -> Vec<Dev> {
+    let mut out = Vec::new();
+    unsafe {
+        let Ok(h) = SetupDiGetClassDevsW(None, PCWSTR::null(), None, DIGCF_ALLCLASSES | DIGCF_PRESENT) else {
+            return out;
+        };
+        let mut i = 0u32;
+        loop {
+            let mut d = SP_DEVINFO_DATA {
+                cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
+                ..Default::default()
+            };
+            if SetupDiEnumDeviceInfo(h, i, &mut d).is_err() {
+                break;
+            }
+            if let Some(dev) = read_dev(h, &d) {
+                out.push(dev);
+            }
+            i += 1;
+        }
+        let _ = SetupDiDestroyDeviceInfoList(h);
+    }
+    out
+}
+
 /// ID を指定して 1 台だけ読む (USB 以外のコントローラーの名前にも使う)
 pub fn get(id: &str) -> Option<Dev> {
     unsafe {

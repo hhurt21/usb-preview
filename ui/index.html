@@ -414,6 +414,220 @@
         color: var(--muted);
         padding: 16px;
       }
+      /* ---------- 全体図 ---------- */
+      :root {
+        --ic-fill: #cfe8de;
+        --card-screen: #2f6fb3;
+        --card-line: #9fb3aa;
+        --bezel: #2a2f2c;
+        --screen-a: #dbeafe;
+        --screen-b: #bfdbfe;
+        --screen-text: #10243f;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --ic-fill: #24493c;
+          --card-line: #4d5f57;
+          --bezel: #0b0d0c;
+          --screen-a: #1e3a5f;
+          --screen-b: #172f4d;
+          --screen-text: #e3efff;
+        }
+      }
+      .map {
+        --narrow: 0;
+        position: relative;
+        display: grid;
+        gap: 22px;
+        grid-template-columns: minmax(0, 1fr) minmax(250px, 0.8fr) minmax(0, 1fr);
+        grid-template-areas:
+          "screen screen usb"
+          "audio pc input"
+          "bt net store"
+          "other internal internal";
+        align-items: start;
+      }
+      @media (max-width: 980px) {
+        .map {
+          --narrow: 1;
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-areas: "pc" "screen" "usb" "audio" "input" "bt" "net" "store" "other" "internal";
+        }
+      }
+      .mlines {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 0;
+        overflow: visible;
+      }
+      .mlines path {
+        stroke: var(--card-line);
+        stroke-width: 2.5;
+        stroke-dasharray: 6 6;
+        fill: none;
+      }
+      .mlines circle {
+        fill: var(--card-line);
+      }
+      .mcard {
+        position: relative;
+        z-index: 1;
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 14px;
+        padding: 12px 14px;
+        min-width: 0;
+      }
+      .mcard h3 {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin: 0 0 8px;
+        font-size: 17px;
+      }
+      .mcount {
+        margin-left: auto;
+        font-size: 14px;
+        color: var(--muted);
+        font-weight: 600;
+      }
+      .mic-wrap {
+        color: var(--accent);
+        display: inline-flex;
+        flex: none;
+      }
+      .ic .f {
+        fill: var(--ic-fill);
+      }
+      .mlist {
+        display: grid;
+        gap: 4px;
+      }
+      .mrow {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        text-align: left;
+        white-space: normal;
+        padding: 6px 8px;
+        min-height: 44px;
+        border-radius: 8px;
+        border: 1px solid transparent;
+        background: transparent;
+      }
+      .mrow:hover {
+        background: var(--bg);
+        border-color: var(--line);
+      }
+      .mrow.flap {
+        border-color: var(--bad);
+        border-width: 2px;
+      }
+      .mtext {
+        display: grid;
+        flex: 1;
+        min-width: 0;
+      }
+      .mname {
+        font-weight: 600;
+        overflow-wrap: anywhere;
+      }
+      .mvnote {
+        margin-top: 6px;
+      }
+      .mcard details {
+        margin-top: 4px;
+      }
+      .mcard summary {
+        cursor: pointer;
+        padding: 4px 0;
+      }
+      .mpc {
+        text-align: center;
+        border: 2px solid var(--accent);
+        align-self: center;
+      }
+      .pc-pic {
+        color: var(--accent);
+      }
+      .pc-title {
+        justify-content: center;
+        font-size: 20px;
+      }
+      .pc-spec {
+        display: grid;
+        gap: 6px;
+        text-align: left;
+      }
+      .pc-line {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        color: var(--accent);
+      }
+      .pc-line > span {
+        color: var(--text);
+        overflow-wrap: anywhere;
+      }
+      .mons-wrap {
+        padding: 6px 4px 4px;
+      }
+      .mons {
+        position: relative;
+        margin: 0 auto;
+      }
+      .mon {
+        position: absolute;
+        padding: 0 6px;
+        border: none;
+        background: transparent;
+        white-space: normal;
+        min-height: 0;
+      }
+      .mon::after {
+        content: "";
+        position: absolute;
+        left: 42%;
+        right: 42%;
+        top: 100%;
+        height: 14%;
+        background: var(--bezel);
+        border-radius: 0 0 6px 6px;
+      }
+      .mon-screen {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
+        gap: 2px;
+        height: 100%;
+        border: 7px solid var(--bezel);
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--screen-a), var(--screen-b));
+        color: var(--screen-text);
+        padding: 6px;
+        text-align: center;
+      }
+      .mon:hover .mon-screen {
+        outline: 3px solid var(--accent);
+      }
+      .mon-name {
+        font-weight: 700;
+        font-size: 16px;
+      }
+      .mon-spec,
+      .mon-gpu {
+        font-size: 13px;
+      }
+      .mtools {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
     </style>
   </head>
   <body>
@@ -436,6 +650,7 @@
 
       <div class="tabs" role="tablist">
         <button role="tab" data-tab="list" aria-selected="true">一覧</button>
+        <button role="tab" data-tab="map" aria-selected="false">全体図</button>
         <button role="tab" data-tab="tree" aria-selected="false">
           つながり方
         </button>
@@ -479,6 +694,16 @@
             <tbody id="rows"></tbody>
           </table>
         </div>
+      </section>
+
+      <section id="tab-map" hidden>
+        <div class="mtools">
+          <label class="filters" style="margin:0"><input type="checkbox" id="mVirtual" /> 仮想の機器も出す</label>
+          <input type="text" id="mText" placeholder="名前で探す" aria-label="名前で探す" />
+          <button id="mReload">読み直す</button>
+          <span class="sub" id="mInfo"></span>
+        </div>
+        <div class="map" id="map"><div class="empty">読んでいます…</div></div>
       </section>
 
       <section id="tab-tree" hidden>
@@ -613,7 +838,8 @@
         const u = up(id);
         return (
           state.devices.find((d) => up(d.id) === u) ||
-          state.controllers.find((d) => up(d.id) === u)
+          state.controllers.find((d) => up(d.id) === u) ||
+          (state.all || []).find((d) => up(d.id) === u)
         );
       }
 
@@ -931,6 +1157,9 @@
             : d.status === "disabled"
               ? PROBLEMS[22]
               : "";
+        const isCore = /^(Display|System|Processor|Computer|SCSIAdapter|HDC|DiskDrive|Volume|Firmware|Net)$/.test(
+          d.class || "",
+        );
         const isInput =
           [d, ...desc].some(
             (x) =>
@@ -947,7 +1176,7 @@
       ${d.manufacturer ? `<dt>メーカー</dt><dd>${esc(d.manufacturer)}</dd>` : ""}
       ${d.class ? `<dt>種類</dt><dd>${esc(d.class)}</dd>` : ""}
       <dt>場所</dt><dd>${esc(placeText(d)) || "不明"} ${d.location ? `<span class="sub">（${esc(d.location)}）</span>` : ""}</dd>
-      <dt>外れた回数</dt><dd>10分で ${d.removed_10min || 0} 回 ／ アプリを開いてから ${d.removed_total || 0} 回</dd>
+      ${up(d.id).startsWith("USB\\") ? `<dt>外れた回数</dt><dd>10分で ${d.removed_10min || 0} 回 ／ アプリを開いてから ${d.removed_total || 0} 回</dd>` : ""}
       ${d.last_arrival ? `<dt>最後につながった</dt><dd>${esc(new Date(d.last_arrival).toLocaleString("ja-JP"))}</dd>` : ""}
       ${d.last_removal ? `<dt>最後に外れた</dt><dd>${esc(new Date(d.last_removal).toLocaleString("ja-JP"))}</dd>` : ""}
       <dt>ID</dt><dd class="sub">${esc(d.id)}</dd>
@@ -972,6 +1201,7 @@
     <div class="section">
       <h3>有効・無効</h3>
       ${adminNote}
+      ${isCore && d.status !== "disabled" ? `<p class="flapnote">この機器（${esc(d.class)}）を無効にすると、画面が消える・ディスクが使えない・ネットにつながらないなど、PC が正しく動かなくなることがあります。</p>` : ""}
       ${d.is_hub && d.status !== "disabled" ? `<p class="flapnote">ハブを無効にすると、その先につながっている機器も全部使えなくなります。</p>` : ""}
       ${isInput && d.status !== "disabled" ? `<p class="flapnote">キーボードやマウスを無効にすると、操作できなくなることがあります。</p>` : ""}
       <div class="row-btns">
@@ -1047,9 +1277,9 @@
           );
         document.getElementById("btnDisable").onclick = () => {
           if (
-            isInput &&
+            (isInput || isCore) &&
             !confirm(
-              "キーボードやマウスかもしれません。無効にすると操作できなくなることがあります。無効にしますか？",
+              "無効にすると、操作できなくなったり PC が正しく動かなくなったりすることがあります。本当に無効にしますか？",
             )
           )
             return;
@@ -1159,9 +1389,10 @@
           document
             .querySelectorAll("[data-tab]")
             .forEach((x) => x.setAttribute("aria-selected", String(x === b)));
-          for (const t of ["list", "tree", "hist", "settings"])
+          for (const t of ["list", "map", "tree", "hist", "settings"])
             document.getElementById("tab-" + t).hidden = t !== b.dataset.tab;
           if (b.dataset.tab === "hist") loadHistory();
+          if (b.dataset.tab === "map") loadMap(!mapState.ov);
           if (b.dataset.tab === "settings") {
             loadSound();
             loadGlobal();
@@ -1239,5 +1470,7 @@
         });
       })();
     </script>
+    <script src="icons.js"></script>
+    <script src="map.js"></script>
   </body>
 </html>

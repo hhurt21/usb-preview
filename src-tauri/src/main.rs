@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod devices;
+mod display;
+mod overview;
 mod power;
 mod sound;
 mod store;
@@ -201,6 +203,16 @@ fn show_error(msg: &str) {
     }
 }
 
+#[tauri::command]
+async fn get_overview() -> Result<overview::Overview, String> {
+    tauri::async_runtime::spawn_blocking(overview::get).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_overview_extra() -> Result<overview::Extra, String> {
+    tauri::async_runtime::spawn_blocking(overview::extra).await.map_err(|e| e.to_string())?
+}
+
 /// 1 つだけ開くための目印 (名前付きミューテックス)。取れたら true。
 /// 取れたハンドルはアプリが終わるまで持ち続ける。
 fn take_single_instance() -> bool {
@@ -320,6 +332,8 @@ fn main() {
             set_power,
             get_global_suspend,
             set_global_suspend,
+            get_overview,
+            get_overview_extra,
         ])
         .run(tauri::generate_context!())
         .expect("起動できませんでした");

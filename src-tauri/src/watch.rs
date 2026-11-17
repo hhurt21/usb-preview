@@ -206,6 +206,8 @@ pub fn start(app: AppHandle, shared: Shared) {
                     while let Ok(x) = rx.try_recv() {
                         notified.extend(x);
                     }
+                    // USB 以外 (画面・Bluetooth など) も変わったかもしれないので、全体図に知らせる
+                    let _ = app.emit("devices-changed", ());
                 }
                 Err(RecvTimeoutError::Timeout) => {}
                 Err(RecvTimeoutError::Disconnected) => break,
