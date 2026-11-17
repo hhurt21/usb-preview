@@ -9,6 +9,8 @@ USB 機器の一覧を出して、**つないだ・外れた**をその場で知
 
 [Releases](https://github.com/hhurt21/usb-preview/releases) から `usb-watch.exe` をダウンロードして開くだけです。インストールは要りません。
 
+`usb-watch.exe` は1つのファイルだけで動きます。画面（HTML・絵）は exe の中に入っていて、横に置くファイルはありません。名前と履歴は使っているうちに `%APPDATA%\usb-watch` に作られます。
+
 - Windows 10 / 11 用です。画面の表示に Microsoft Edge WebView2 を使います（Windows 11 には最初から入っています）
 - 署名していない exe なので、初めて開くときに SmartScreen が出ることがあります。「詳細情報」→「実行」で開けます
 
