@@ -534,6 +534,13 @@ function specSections() {
   });
 
   out.push({
+    key: "health",
+    icon: "ssd",
+    title: "ストレージの寿命",
+    rows: storageLifeRows(s),
+  });
+
+  out.push({
     key: "net",
     icon: "ethernet",
     title: "ネットワーク",
@@ -703,6 +710,80 @@ function specSections() {
   return out.filter((sec) => sec.rows.length);
 }
 
+/** ディスクの健康状態 (CrystalDiskInfo に近い分け方)。文字と色の両方で出す */
+function diskHealth(d) {
+  if (
+    (d.health && d.health !== "Healthy") ||
+    d.critical ||
+    d.media_errors ||
+    (d.wear != null && d.wear >= 90)
+  )
+    return "危険";
+  if ((d.wear != null && d.wear >= 80) || (d.temp != null && d.temp >= 70))
+    return "注意";
+  return "良好";
+}
+
+/** ストレージの寿命の行。消耗度がある SSD は残りの割合とあと何年か、HDD は時間と状態で出す */
+function storageLifeRows(s) {
+  const disks = s.disks || [];
+  const rows = [];
+  const haveData = disks.some((d) => d.hours != null || d.wear != null);
+  if (!haveData) {
+    rows.push([
+      "寿命",
+      "管理者で開くと見られます",
+      "SSD・HDD 自身の記録（SMART）を読むには、管理者の権限が要ります",
+      null,
+      state.admin ? null : "admin",
+    ]);
+    return rows;
+  }
+  for (const d of disks) {
+    const hdd = /HDD/i.test(d.media || "");
+    const label = diskHealth(d);
+    if (d.wear != null && !hdd) {
+      const left = Math.max(0, 100 - d.wear);
+      let note = "";
+      if (d.wear >= 1 && d.hours) {
+        // 今までの書き込みの速さのまま使った場合 (電源が入っている時間で数える)
+        const leftHours = d.hours * (left / d.wear);
+        note = `今までと同じ使い方なら、あと約 ${fmtSpan(leftHours)}（電源が入っている時間で数えた目安）`;
+      } else if (d.wear < 1) note = "まだほとんど減っていません";
+      rows.push([
+        d.name,
+        `${label}・寿命の残り ${left}%`,
+        note,
+        left / 100,
+        "disk",
+      ]);
+    } else {
+      rows.push([
+        d.name,
+        `${label}`,
+        hdd
+          ? "HDD には消耗度がありません。状態と電源が入っていた時間で見ます"
+          : "このディスクは消耗度を教えていません",
+        null,
+        "disk",
+      ]);
+    }
+    const detail = [
+      d.hours != null && `電源 ${fmtSpan(d.hours)}（${fmtHours(d.hours)}）`,
+      d.temp != null && `温度 ${d.temp}℃`,
+      d.written && `書き込んだ量 ${fmtBytes(d.written)}`,
+      d.written &&
+        d.hours &&
+        `1日あたり約 ${Math.round(d.written / (d.hours / 24) / 1e9)} GB`,
+      d.media_errors != null && `読み書きの失敗 ${d.media_errors} 回`,
+    ]
+      .filter(Boolean)
+      .join("・");
+    if (detail) rows.push(["", detail]);
+  }
+  return rows;
+}
+
 /** 部品の名前ではない見出し (この行は中身のほうを押せるようにする) */
 const GENERIC_LABEL =
   /^(名前|合計|\d+ 枚目|マザーボード|BIOS|ドライバー|うまく動いていない機器|[A-Z]: ドライブ)$/;
@@ -731,10 +812,12 @@ function renderSpec() {
           // 見出しが部品の名前の行 (ディスク名・モニター名など) は見出しを、「名前」「合計」などの行は中身を押せるようにする
           const link = (text) =>
             `<button class="slink" data-sug="${sk}" aria-expanded="${specState.open.has(sec.key + "|" + sk)}">${esc(text)}</button>`;
-          const clickable = sk && hasSug(sk);
+          const clickable = sk && sk !== "admin" && hasSug(sk);
           const nameInLabel = clickable && !GENERIC_LABEL.test(k);
           const label = nameInLabel ? link(k) : esc(k);
-          const val = clickable && !nameInLabel ? link(v) : `<b>${esc(v)}</b>`;
+          let val = clickable && !nameInLabel ? link(v) : `<b>${esc(v)}</b>`;
+          if (sk === "admin")
+            val += ` <button class="primary" data-admin>管理者で開き直す</button>`;
           const bar =
             ratio != null
               ? `<span class="sbar ${ratio < 0.1 ? "low" : ""}" role="meter" aria-label="空きの割合" aria-valuenow="${Math.round(ratio * 100)}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.round(ratio * 100)}%"></span></span>`
@@ -815,6 +898,10 @@ async function loadSpec(force) {
 }
 
 document.getElementById("spec").addEventListener("click", (e) => {
+  if (e.target.closest("[data-admin]")) {
+    invoke("relaunch_admin").catch((err) => alert(String(err)));
+    return;
+  }
   const b = e.target.closest("[data-sug]");
   if (!b) return;
   const id = b.closest("[data-sec]").dataset.sec + "|" + b.dataset.sug;
