@@ -834,6 +834,7 @@ function renderSpec() {
       return `<section class="scard" data-sec="${sec.key}">
       <h3><span class="mic-wrap big">${iconSvg(sec.icon, 32)}</span>${esc(sec.title)}</h3>
       <dl class="skv">${rows}</dl>${panel}
+      ${sec.key === "health" ? `<div class="row-btns" style="margin-top:10px"><button data-goto-tab="ssd">SSD の書き込みと、長持ちさせる方法を見る</button></div>` : ""}
     </section>`;
     })
     .join("");
@@ -898,6 +899,11 @@ async function loadSpec(force) {
 }
 
 document.getElementById("spec").addEventListener("click", (e) => {
+  const g = e.target.closest("[data-goto-tab]");
+  if (g) {
+    document.querySelector(`[data-tab="${g.dataset.gotoTab}"]`)?.click();
+    return;
+  }
   if (e.target.closest("[data-admin]")) {
     invoke("relaunch_admin").catch((err) => alert(String(err)));
     return;

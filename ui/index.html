@@ -847,6 +847,80 @@
       .sbar.low > span {
         background: var(--bad);
       }
+      /* SSD の書き込み */
+      .ssd-wide {
+        grid-column: 1 / -1;
+      }
+      .rates {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+      }
+      .rate {
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: var(--bg);
+      }
+      .rate-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        align-items: baseline;
+      }
+      .rate-num .big {
+        font-size: 26px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+      }
+      .rate-level {
+        font-size: 13px;
+        font-weight: 700;
+        padding: 0 8px;
+        border-radius: 999px;
+      }
+      .rate-level.high {
+        color: var(--bad);
+        background: var(--bad-bg);
+      }
+      .rate-level.mid {
+        color: var(--off);
+        background: var(--off-bg);
+      }
+      .rate-level.low {
+        color: var(--ok);
+        background: var(--ok-bg);
+      }
+      .pols {
+        display: grid;
+        gap: 12px;
+        margin: 8px 0;
+      }
+      .pol {
+        display: grid;
+        gap: 6px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+      }
+      .ssd-list {
+        margin: 0;
+        padding-left: 22px;
+        display: grid;
+        gap: 6px;
+      }
+      .scard code,
+      .scard kbd {
+        font-family: Consolas, "Cascadia Mono", monospace;
+        font-size: 14px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 0 4px;
+      }
+      .scard p {
+        margin: 4px 0 8px;
+      }
       .mtools {
         display: flex;
         flex-wrap: wrap;
@@ -878,6 +952,7 @@
         <button role="tab" data-tab="list" aria-selected="true">一覧</button>
         <button role="tab" data-tab="map" aria-selected="false">全体図</button>
         <button role="tab" data-tab="spec" aria-selected="false">PC のスペック</button>
+        <button role="tab" data-tab="ssd" aria-selected="false">SSD の書き込み</button>
         <button role="tab" data-tab="tree" aria-selected="false">
           つながり方
         </button>
@@ -942,6 +1017,10 @@
         <p class="sub">点線の下線がある名前を押すと、その部品のアップグレードの提案が出ます。</p>
         <div class="msgline" id="sCopyMsg"></div>
         <div class="spec" id="spec"><div class="empty">読んでいます…</div></div>
+      </section>
+
+      <section id="tab-ssd" hidden>
+        <div class="spec" id="ssd"><div class="empty">読んでいます…</div></div>
       </section>
 
       <section id="tab-tree" hidden>
@@ -1627,10 +1706,11 @@
           document
             .querySelectorAll("[data-tab]")
             .forEach((x) => x.setAttribute("aria-selected", String(x === b)));
-          for (const t of ["list", "map", "spec", "tree", "hist", "settings"])
+          for (const t of ["list", "map", "spec", "ssd", "tree", "hist", "settings"])
             document.getElementById("tab-" + t).hidden = t !== b.dataset.tab;
           if (b.dataset.tab === "hist") loadHistory();
           if (b.dataset.tab === "map") loadMap(!mapState.ov);
+          if (b.dataset.tab === "ssd") loadSsd();
           if (b.dataset.tab === "spec") {
             if (specState.data) renderSpec();
             else loadSpec(false);
@@ -1715,5 +1795,6 @@
     <script src="icons.js"></script>
     <script src="map.js"></script>
     <script src="spec.js"></script>
+    <script src="ssd.js"></script>
   </body>
 </html>

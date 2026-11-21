@@ -1,7 +1,9 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod audio;
+mod browser;
 mod devices;
+mod diskrate;
 mod display;
 mod overview;
 mod power;
@@ -211,6 +213,21 @@ async fn get_audio_state() -> Result<audio::AudioState, String> {
     tauri::async_runtime::spawn_blocking(audio::state).await.map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+fn get_disk_rates() -> Result<Vec<diskrate::DiskRate>, String> {
+    diskrate::rates()
+}
+
+#[tauri::command]
+fn get_cache_policy() -> Vec<browser::CachePolicy> {
+    browser::get()
+}
+
+#[tauri::command]
+fn set_cache_policy(id: String, small: bool) -> Result<Vec<browser::CachePolicy>, String> {
+    browser::set(&id, small)
+}
+
 /// NVMe SSD の健康記録 (管理者のときだけ。普通の権限なら空)
 #[tauri::command]
 async fn get_nvme_health() -> Result<Vec<smart::NvmeHealth>, String> {
@@ -365,6 +382,9 @@ fn main() {
             get_spec,
             get_monitor_usage,
             get_nvme_health,
+            get_disk_rates,
+            get_cache_policy,
+            set_cache_policy,
         ])
         .run(tauri::generate_context!())
         .expect("起動できませんでした");
