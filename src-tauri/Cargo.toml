@@ -1,6 +1,6 @@
 [package]
 name = "usb-watch"
-version = "0.5.0"
+version = "0.6.0"
 description = "USB 機器の一覧・見張り・有効/無効の切り替え"
 edition = "2021"
 
