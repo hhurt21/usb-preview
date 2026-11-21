@@ -5,6 +5,7 @@ mod devices;
 mod display;
 mod overview;
 mod power;
+mod smart;
 mod sound;
 mod spec;
 mod store;
@@ -210,6 +211,20 @@ async fn get_audio_state() -> Result<audio::AudioState, String> {
     tauri::async_runtime::spawn_blocking(audio::state).await.map_err(|e| e.to_string())?
 }
 
+/// NVMe SSD の健康記録 (管理者のときだけ。普通の権限なら空)
+#[tauri::command]
+async fn get_nvme_health() -> Result<Vec<smart::NvmeHealth>, String> {
+    if !is_admin() {
+        return Ok(Vec::new());
+    }
+    tauri::async_runtime::spawn_blocking(smart::read_all).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_monitor_usage() -> Result<Vec<display::MonitorUsage>, String> {
+    tauri::async_runtime::spawn_blocking(display::usage).await.map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 async fn get_spec() -> Result<serde_json::Value, String> {
     tauri::async_runtime::spawn_blocking(spec::get).await.map_err(|e| e.to_string())?
@@ -348,6 +363,8 @@ fn main() {
             get_overview_extra,
             get_audio_state,
             get_spec,
+            get_monitor_usage,
+            get_nvme_health,
         ])
         .run(tauri::generate_context!())
         .expect("起動できませんでした");

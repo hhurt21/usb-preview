@@ -34,7 +34,13 @@ $gpu = @(Get-CimInstance Win32_VideoController | ForEach-Object {
   } })
 
 $disks = @(Get-PhysicalDisk | ForEach-Object {
-  [pscustomobject]@{ name = T $_.FriendlyName; media = [string]$_.MediaType; bus = [string]$_.BusType; size = [int64]$_.Size; health = [string]$_.HealthStatus } })
+  # 電源が入っていた時間・温度・消耗度 (SMART) は管理者のときだけ取れる
+  $r = $null; try { $r = $_ | Get-StorageReliabilityCounter -ErrorAction Stop } catch {}
+  [pscustomobject]@{ number = [int]$_.DeviceId; name = T $_.FriendlyName; media = [string]$_.MediaType; bus = [string]$_.BusType; size = [int64]$_.Size; health = [string]$_.HealthStatus
+    hours = if ($r -and $r.PowerOnHours) { [int64]$r.PowerOnHours } else { $null }
+    temp = if ($r -and $r.Temperature) { [int]$r.Temperature } else { $null }
+    wear = if ($r -and $null -ne $r.Wear) { [int]$r.Wear } else { $null }
+    starts = if ($r -and $r.StartStopCycleCount) { [int64]$r.StartStopCycleCount } else { $null } } })
 $vols = @(Get-Volume | Where-Object { $_.DriveLetter } | Sort-Object DriveLetter | ForEach-Object {
   [pscustomobject]@{ letter = [string]$_.DriveLetter; fs = [string]$_.FileSystem; size = [int64]$_.Size; free = [int64]$_.SizeRemaining; kind = [string]$_.DriveType } })
 $nets = @(Get-NetAdapter -Physical | ForEach-Object {
@@ -45,6 +51,7 @@ $nets = @(Get-NetAdapter -Physical | ForEach-Object {
     name = T $os.Caption; version = T $cv.DisplayVersion; build = "$($os.BuildNumber).$($cv.UBR)"
     arch = T $os.OSArchitecture
     boot = if ($os.LastBootUpTime) { $os.LastBootUpTime.ToString('o') } else { $null }
+    install = if ($os.InstallDate) { $os.InstallDate.ToString('o') } else { $null }
   }
   cpu = @($cpu | ForEach-Object { [pscustomobject]@{
     name = T $_.Name; cores = [int]$_.NumberOfCores; threads = [int]$_.NumberOfLogicalProcessors
