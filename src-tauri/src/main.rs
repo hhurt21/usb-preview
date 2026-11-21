@@ -1,10 +1,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio;
 mod devices;
 mod display;
 mod overview;
 mod power;
 mod sound;
+mod spec;
 mod store;
 mod watch;
 
@@ -204,6 +206,16 @@ fn show_error(msg: &str) {
 }
 
 #[tauri::command]
+async fn get_audio_state() -> Result<audio::AudioState, String> {
+    tauri::async_runtime::spawn_blocking(audio::state).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_spec() -> Result<serde_json::Value, String> {
+    tauri::async_runtime::spawn_blocking(spec::get).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 async fn get_overview() -> Result<overview::Overview, String> {
     tauri::async_runtime::spawn_blocking(overview::get).await.map_err(|e| e.to_string())
 }
@@ -334,6 +346,8 @@ fn main() {
             set_global_suspend,
             get_overview,
             get_overview_extra,
+            get_audio_state,
+            get_spec,
         ])
         .run(tauri::generate_context!())
         .expect("起動できませんでした");
