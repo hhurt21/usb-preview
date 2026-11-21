@@ -219,13 +219,13 @@ fn get_disk_rates() -> Result<Vec<diskrate::DiskRate>, String> {
 }
 
 #[tauri::command]
-fn get_cache_policy() -> Vec<browser::CachePolicy> {
-    browser::get()
+async fn get_cache_policy() -> Result<Vec<browser::BrowserCache>, String> {
+    tauri::async_runtime::spawn_blocking(browser::list).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn set_cache_policy(id: String, small: bool) -> Result<Vec<browser::CachePolicy>, String> {
-    browser::set(&id, small)
+async fn set_cache_policy(id: String, small: bool) -> Result<Vec<browser::BrowserCache>, String> {
+    tauri::async_runtime::spawn_blocking(move || browser::set(&id, small)).await.map_err(|e| e.to_string())?
 }
 
 /// NVMe SSD の健康記録 (管理者のときだけ。普通の権限なら空)

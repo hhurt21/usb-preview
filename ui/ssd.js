@@ -29,30 +29,41 @@ function rateRows() {
     .join("");
 }
 
-function policyRows() {
-  const list = ssdState.policy.filter((p) => p.installed);
-  if (!list.length)
-    return `<div class="sub">Chrome も Edge も見つかりませんでした。</div>`;
-  return list
-    .map((p) => {
-      const small = p.size != null && p.size <= 16_000_000;
-      const state =
-        p.size == null
-          ? "ブラウザーにまかせている（最初の設定）"
-          : small
-            ? `小さくしている（${Math.round(p.size / 1e6)} MB）`
-            : `${Math.round(p.size / 1e6)} MB に決めてある`;
-      const restart = p.id === "chrome" ? "chrome://restart" : "edge://restart";
-      return `<div class="pol">
-      <div><b>${esc(p.name)}</b>：<span class="state">${esc(state)}</span></div>
+const METHOD_WORD = {
+  policy: "ポリシーで設定（どこから開いても効く）",
+  userjs: "設定ファイル user.js に書く（プロファイルごと）",
+  shortcut: "ショートカットに指定を足す（ほかのアプリのリンクから開いたときは効かない）",
+};
+const STATE_WORD = {
+  small: "小さくしている",
+  default: "ブラウザーにまかせている（最初の設定）",
+  partial: "一部だけ小さくしている",
+  none: "設定する場所が見つからない",
+};
+
+function browserRow(p) {
+  const canSet = p.state !== "none";
+  return `<div class="pol">
+      <div class="pol-head"><b>${esc(p.name)}</b>
+        <span class="pol-tag ${p.tested ? "ok" : "warn"}">${p.tested ? "この PC で効くのを確かめた" : "この PC では未確認"}</span></div>
+      <div>今：<span class="state">${esc(STATE_WORD[p.state] || p.state)}</span>${p.detail ? `<span class="sub">　${esc(p.detail)}</span>` : ""}</div>
+      <div class="sub">${esc(METHOD_WORD[p.method] || "")}</div>
       <div class="row-btns">
-        <button class="primary" data-pol="${p.id}" data-small="1" ${small ? "disabled" : ""}>キャッシュを小さくする</button>
-        <button data-pol="${p.id}" data-small="0" ${p.size == null ? "disabled" : ""}>元に戻す</button>
+        <button class="primary" data-pol="${p.id}" data-small="1" ${!canSet || p.state === "small" ? "disabled" : ""}>キャッシュを小さくする</button>
+        <button data-pol="${p.id}" data-small="0" ${!canSet || p.state === "default" ? "disabled" : ""}>元に戻す</button>
       </div>
-      <div class="sub">変えたあとは、アドレス欄に <code>${restart}</code> と入れて Enter で開き直すと効きます（窓を閉じるだけだと、裏で動き続けて効かないことがあります）。</div>
+      <div class="sub">変えたあと：${p.restart.includes("://") ? `アドレス欄に <code>${esc(p.restart)}</code> と入れて Enter` : esc(p.restart)}</div>
     </div>`;
-    })
-    .join("");
+}
+
+function policyRows() {
+  if (!ssdState.policy.length) return `<div class="sub">読んでいます…</div>`;
+  const inst = ssdState.policy.filter((p) => p.installed);
+  const others = ssdState.policy.filter((p) => !p.installed);
+  const settable = inst.filter((p) => p.state !== "none" && p.state !== "small");
+  return `${inst.length ? `<div class="row-btns"><button class="primary" data-pol-all="1" ${settable.length ? "" : "disabled"}>入っているブラウザーを全部小さくする（${settable.length} 個）</button></div>` : ""}
+    ${inst.map(browserRow).join("") || `<div class="sub">対応しているブラウザーが見つかりませんでした。</div>`}
+    ${others.length ? `<details><summary>ほかに対応しているブラウザー（この PC には入っていない）${others.length} 個</summary><p class="sub">${others.map((p) => esc(p.name)).join("・")}</p></details>` : ""}`;
 }
 
 function renderSsd() {
@@ -70,7 +81,7 @@ function renderSsd() {
     <p>キャッシュの大きさを 8 MB にすると、大きな映像の切れ端は保存されなくなり、配信はそのまま見られます。ふつうのページの表示が少し遅くなることがあります。</p>
     <div class="pols" id="ssdPol">${policyRows()}</div>
     <div class="msgline" id="ssdPolMsg"></div>
-    <p class="sub">しくみ：Windows のポリシー（自分のユーザーの設定 <code>DiskCacheSize</code>）でブラウザーに指示します。管理者の権限は要りません。ブラウザーの設定画面に「組織によって管理されています」と出ますが、この設定のためです。</p>
+    <p class="sub">しくみ：Chrome・Edge・Brave・Vivaldi などは Windows のポリシー（自分のユーザーの <code>DiskCacheSize</code>）、Firefox の仲間は各プロファイルの <code>user.js</code>、ポリシーに対応していない Opera などはショートカットの <code>--disk-cache-size</code> で指示します。どれも管理者の権限は要りません。ポリシーで設定したブラウザーは、設定画面に「組織によって管理されています」と出ますが、この設定のためです。</p>
   </section>
 
   <section class="scard">
@@ -151,23 +162,26 @@ setInterval(() => {
 }, 2000);
 
 document.getElementById("ssd").addEventListener("click", async (e) => {
+  const all = e.target.closest("[data-pol-all]");
   const b = e.target.closest("[data-pol]");
-  if (!b) return;
+  if (!all && !b) return;
   const msg = document.getElementById("ssdPolMsg");
-  try {
-    ssdState.policy = await invoke("set_cache_policy", {
-      id: b.dataset.pol,
-      small: b.dataset.small === "1",
-    });
-    document.getElementById("ssdPol").innerHTML = policyRows();
-    setMsg(
-      document.getElementById("ssdPolMsg"),
-      b.dataset.small === "1"
-        ? "小さくしました。ブラウザーを開き直すと効きます"
-        : "元に戻しました。ブラウザーを開き直すと効きます",
-      "good",
-    );
-  } catch (err) {
-    setMsg(msg, String(err), "err");
+  setMsg(msg, "書いています…");
+  const ids = all
+    ? ssdState.policy.filter((p) => p.installed && p.state !== "none" && p.state !== "small").map((p) => p.id)
+    : [b.dataset.pol];
+  const small = all ? true : b.dataset.small === "1";
+  const errors = [];
+  for (const id of ids) {
+    try {
+      ssdState.policy = await invoke("set_cache_policy", { id, small });
+    } catch (err) {
+      errors.push(String(err));
+    }
   }
+  if (errors.length) ssdState.policy = await invoke("get_cache_policy").catch(() => ssdState.policy);
+  document.getElementById("ssdPol").innerHTML = policyRows();
+  const m2 = document.getElementById("ssdPolMsg");
+  if (errors.length) setMsg(m2, errors.join(" / "), "err");
+  else setMsg(m2, small ? "小さくしました。それぞれのブラウザーを開き直すと効きます" : "元に戻しました。ブラウザーを開き直すと効きます", "good");
 });
