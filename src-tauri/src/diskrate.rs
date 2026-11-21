@@ -2,9 +2,18 @@
 //! 速さは「前に読んだときからの差」で出るので、1 回目は 0 になる。画面から 2 秒ごとに呼ぶ。
 
 use serde::Serialize;
+use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::Instant;
 use windows::core::w;
+use windows::Win32::Foundation::CloseHandle;
+use windows::Win32::System::Diagnostics::ToolHelp::{
+    CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+};
 use windows::Win32::System::Performance::*;
+use windows::Win32::System::Threading::{
+    GetProcessIoCounters, OpenProcess, IO_COUNTERS, PROCESS_QUERY_LIMITED_INFORMATION,
+};
 
 #[derive(Serialize, Clone, Debug)]
 pub struct DiskRate {
@@ -90,4 +99,124 @@ pub fn rates() -> Result<Vec<DiskRate>, String> {
         out.sort_by(|a, b| a.name.cmp(&b.name));
         Ok(out)
     }
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct ProcIoRate {
+    pub name: String,
+    pub pids: usize,
+    pub write_bytes_per_sec: f64,
+    pub read_bytes_per_sec: f64,
+    /// 計測開始からの合計書き込み量 (バイト)
+    pub total_written: u64,
+}
+
+#[derive(Default)]
+struct ProcTracker {
+    last_time: Option<Instant>,
+    last_pid: HashMap<u32, (String, u64, u64)>,
+    totals: HashMap<String, u64>,
+}
+
+static PROC_TRACKER: Mutex<Option<ProcTracker>> = Mutex::new(None);
+
+pub fn reset_proc_totals() {
+    if let Ok(mut g) = PROC_TRACKER.lock() {
+        if let Some(t) = g.as_mut() {
+            t.totals.clear();
+        }
+    }
+}
+
+/// アプリごとの今の書き込み・読み込みの速さ (上位 12 アプリ)。
+/// Chrome のようにプロセスがたくさんあるアプリは名前ごとに合算する。
+pub fn proc_io_rates() -> Result<Vec<ProcIoRate>, String> {
+    let mut cur: HashMap<u32, (String, u64, u64)> = HashMap::new();
+    unsafe {
+        let snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0).map_err(|e| e.to_string())?;
+        let mut e = PROCESSENTRY32W {
+            dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32,
+            ..Default::default()
+        };
+        if Process32FirstW(snap, &mut e).is_ok() {
+            loop {
+                let pid = e.th32ProcessID;
+                if pid > 4 {
+                    let end = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+                    let raw = String::from_utf16_lossy(&e.szExeFile[..end]);
+                    let name = raw
+                        .trim_end_matches(".exe")
+                        .trim_end_matches(".EXE")
+                        .to_string();
+                    if let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
+                        let mut io = IO_COUNTERS::default();
+                        if GetProcessIoCounters(h, &mut io).is_ok() {
+                            cur.insert(pid, (name, io.WriteTransferCount, io.ReadTransferCount));
+                        }
+                        let _ = CloseHandle(h);
+                    }
+                }
+                if Process32NextW(snap, &mut e).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+    }
+
+    let now = Instant::now();
+    let mut guard = PROC_TRACKER.lock().map_err(|e| e.to_string())?;
+    let tr = guard.get_or_insert_with(ProcTracker::default);
+    let dt = tr
+        .last_time
+        .map(|t| now.duration_since(t).as_secs_f64())
+        .unwrap_or(0.0);
+
+    // 名前ごとに合算: (pids, dw, dr)
+    let mut agg: HashMap<String, (usize, u64, u64)> = HashMap::new();
+    for (pid, (name, w, r)) in &cur {
+        let entry = agg.entry(name.clone()).or_insert((0, 0, 0));
+        entry.0 += 1;
+        if dt > 0.1 {
+            if let Some((prev_name, pw, pr)) = tr.last_pid.get(pid) {
+                if prev_name == name {
+                    let dw = w.saturating_sub(*pw);
+                    let dr = r.saturating_sub(*pr);
+                    entry.1 = entry.1.saturating_add(dw);
+                    entry.2 = entry.2.saturating_add(dr);
+                    if dw > 0 {
+                        *tr.totals.entry(name.clone()).or_insert(0) += dw;
+                    }
+                }
+            }
+        }
+    }
+
+    tr.last_time = Some(now);
+    tr.last_pid = cur;
+
+    let mut out: Vec<ProcIoRate> = agg
+        .into_iter()
+        .filter_map(|(name, (pids, dw, dr))| {
+            let total_written = *tr.totals.get(&name).unwrap_or(&0);
+            if dw == 0 && total_written == 0 {
+                return None;
+            }
+            Some(ProcIoRate {
+                name,
+                pids,
+                write_bytes_per_sec: if dt > 0.1 { dw as f64 / dt } else { 0.0 },
+                read_bytes_per_sec: if dt > 0.1 { dr as f64 / dt } else { 0.0 },
+                total_written,
+            })
+        })
+        .collect();
+    out.sort_by(|a, b| {
+        b.write_bytes_per_sec
+            .partial_cmp(&a.write_bytes_per_sec)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| b.total_written.cmp(&a.total_written))
+    });
+    out.truncate(12);
+    Ok(out)
 }

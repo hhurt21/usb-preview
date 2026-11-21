@@ -60,6 +60,8 @@ const mapState = {
   extra: null, // get_overview_extra の結果 (ディスク・ネットワークの詳細)
   audio: null, // get_audio_state の結果 (既定の機器・音の大きさ・アプリ)
   audioSig: "",
+  monUsage: [], // DDC/CI 明るさ・使用時間
+  dragging: false, // スライダー操作中は全体描き直しを止める
   byId: new Map(), // 大文字 ID → 機器
   kids: new Map(), // 大文字 ID → 子の配列
   loading: false,
@@ -423,8 +425,41 @@ function monitorsHtml() {
       </span>
     </button>`;
   });
+  const brRows = ms
+    .map((m) => {
+      const u = (mapState.monUsage || []).find(
+        (x) => x.gdi_name && m.gdi_name && up(x.gdi_name) === up(m.gdi_name),
+      );
+      if (!u || u.brightness == null || !u.brightness_max) return "";
+      const mon = mapDev(m.monitor_id);
+      const nm =
+        (mon && state.names.devices[up(mon.id)]) ||
+        m.name ||
+        (mon ? mon.name : m.gdi_name);
+      const pct = Math.round((u.brightness / u.brightness_max) * 100);
+      return `<div class="mon-br-row">
+        <span class="mon-br-name">${esc(nm)}</span>
+        <input type="range" min="0" max="${u.brightness_max}" value="${u.brightness}" data-mon-br="${esc(m.gdi_name)}" data-mon-max="${u.brightness_max}" aria-label="${esc(nm)} の明るさ" />
+        <span class="num mon-br-val">${pct}%</span>
+      </div>`;
+    })
+    .filter(Boolean);
+  const brHtml = brRows.length
+    ? `<div class="mon-br">
+        <div class="mon-br-head">
+          <b>明るさを変える（DDC/CI）</b>
+          <span class="row-btns">
+            <button class="small-btn" data-br-all="80">昼 80%</button>
+            <button class="small-btn" data-br-all="50">夕方 50%</button>
+            <button class="small-btn" data-br-all="25">夜 25%</button>
+          </span>
+        </div>
+        ${brRows.join("")}
+        <div class="msgline" id="monBrMsg"></div>
+      </div>`
+    : "";
   return `<div class="mons-wrap"><div class="mons" style="aspect-ratio:${W} / ${HH};width:min(100%, ${Math.round((300 * W) / HH)}px)">${mons.join("")}</div></div>
-    <p class="sub">Windows の画面設定と同じ並び方です。モニターを押すと、くわしく見られます。</p>`;
+    <p class="sub">Windows の画面設定と同じ並び方です。モニターを押すと、くわしく見られます。</p>${brHtml}`;
 }
 
 // ---------- USB の木 ----------
@@ -458,14 +493,33 @@ function usbNodeHtml(d, depth) {
   const q = searchText();
   // 探しているときは、当たった機器と、そこまでのハブだけ出す
   if (q && !matches(d) && !childHtml.length) return "";
-  const sub = hub
-    ? isRootHub(d)
-      ? "ルートハブ"
-      : `ハブ・${kids.filter((c) => !isUsbHub(c)).length} 台`
+  const pinfo = portKey(d) && state.usbPorts ? state.usbPorts[portKey(d)] : null;
+  const hubMa = hub
+    ? kids.reduce((acc, c) => {
+        const ci = portKey(c) && state.usbPorts ? state.usbPorts[portKey(c)] : null;
+        return acc + (ci?.max_power_ma || 0);
+      }, 0)
+    : 0;
+  const subParts = [];
+  if (hub) {
+    subParts.push(
+      isRootHub(d)
+        ? "ルートハブ"
+        : `ハブ・${kids.filter((c) => !isUsbHub(c)).length} 台`,
+    );
+    if (hubMa > 0) subParts.push(`合計 ${hubMa}mA`);
+  }
+  if (pinfo) {
+    subParts.push(pinfo.speed_label);
+    if (pinfo.max_power_ma) subParts.push(`${pinfo.max_power_ma}mA`);
+  }
+  const sub = subParts.join("・");
+  const slowWarn = pinfo?.slow_port
+    ? `<span class="usb-warn">⚠ USB 3.0 対応ですが USB 2.0 で動いています</span>`
     : "";
   const rowHtml = `<button class="mrow utree-row ${flap ? "flap" : ""} ${hub ? "is-hub" : ""}" data-open="${esc(d.id)}" title="${esc(d.name)}">
       <span class="mic-wrap">${iconSvg(guessUsbIcon(d), hub ? 26 : 30)}</span>
-      <span class="mtext"><span class="mname">${port}${esc(mapName(d))}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}${flap ? `<span class="flapnote">くり返し外れています</span>` : ""}</span>
+      <span class="mtext"><span class="mname">${port}${esc(mapName(d))}</span>${sub ? `<span class="sub">${esc(sub)}</span>` : ""}${slowWarn}${flap ? `<span class="flapnote">くり返し外れています</span>` : ""}</span>
       ${d.status !== "ok" ? statusBadge(d) : ""}
     </button>`;
   return `<li>${rowHtml}${childHtml.length ? `<ul>${childHtml.join("")}</ul>` : ""}</li>`;
@@ -505,24 +559,62 @@ function usbCardHtml() {
 }
 
 // ---------- 音 ----------
-function audioRowExtra(d) {
+function audioRowHtml(it) {
+  const d = it.dev;
   const a = mapState.audio;
-  if (!a) return "";
   const u = up(d.id);
+  const cap = !!it.capture;
+  const isMain = a && (u === a.render || u === a.capture);
+  const isComm = a && (u === a.render_comm || u === a.capture_comm);
+  const ep = a?.endpoints?.find((e) => e.id === u);
   const badges = [];
-  if (u === a.render || u === a.capture)
-    badges.push(`<span class="abadge main">いつも使う</span>`);
-  if (u === a.render_comm || u === a.capture_comm)
-    badges.push(`<span class="abadge comm">通話で使う</span>`);
-  const ep = a.endpoints.find((e) => e.id === u);
-  const names = appsOf(d);
-  const apps = names.length
-    ? `<span class="aapps">${isCapture(d) ? "録っているアプリ" : "鳴らしているアプリ"}：${esc(names.join("・"))}</span>`
-    : "";
+  if (isMain) badges.push(`<span class="abadge main">いつも使う</span>`);
+  if (isComm) badges.push(`<span class="abadge comm">通話で使う</span>`);
+  if (ep?.muted)
+    badges.push(
+      `<span class="abadge muted">${cap ? "🔇 マイク ミュート中" : "🔇 ミュート中"}</span>`,
+    );
   const pct = Math.round(Math.min(1, ep?.peak || 0) * 100);
-  return `${badges.length ? `<span class="abadges">${badges.join("")}</span>` : ""}
+  const volPct = Math.round(Math.min(1, Math.max(0, ep?.volume ?? 1)) * 100);
+  const sessions = (ep?.sessions || []).filter((s) => s.pid > 0);
+  const sessHtml = sessions.length
+    ? `<div class="sess-list">${sessions
+        .map((s) => {
+          const sv = Math.round(Math.min(1, Math.max(0, s.volume)) * 100);
+          const nm = /^(svchost|audiodg)$/i.test(s.name) ? "Windows の音" : s.name;
+          return `<div class="sess-row">
+            <span class="sess-name">${esc(nm)}</span>
+            <button class="tiny-btn" data-sess-mute="${esc(u)}" data-pid="${s.pid}" data-vol="${s.volume}" data-muted="${s.muted ? "0" : "1"}">${s.muted ? "🔇" : "🔊"}</button>
+            <input type="range" min="0" max="100" value="${sv}" data-sess-vol="${esc(u)}" data-pid="${s.pid}" data-muted="${s.muted ? "1" : "0"}" aria-label="${esc(nm)} の音量" />
+            <span class="num sub">${sv}%</span>
+          </div>`;
+        })
+        .join("")}</div>`
+    : "";
+  const st = d.status !== "ok" ? statusBadge(d) : "";
+  return `<div class="mrow mrow-audio ${ep?.muted && cap ? "mic-muted" : ""}">
+    <div class="mrow-audio-top">
+      <button class="mrow-head-btn" data-open="${esc(d.id)}" title="${esc(d.name)}">
+        <span class="mic-wrap">${iconSvg(it.icon, 28)}</span>
+        <span class="mtext"><span class="mname">${esc(mapName(d))}</span>${it.sub ? `<span class="sub">${esc(it.sub)}</span>` : ""}</span>
+      </button>
+      ${st}
+    </div>
+    ${badges.length ? `<span class="abadges">${badges.join("")}</span>` : ""}
     <span class="ameter" data-ep="${esc(u)}" role="meter" aria-label="今の音の大きさ" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}"><span style="width:${pct}%"></span></span>
-    ${apps}`;
+    ${
+      ep
+        ? `<div class="audio-ctl">
+        <button class="tiny-btn" data-ep-mute="${esc(u)}" data-muted="${ep.muted ? "0" : "1"}" title="ミュート切替">${ep.muted ? "🔇 解除" : "🔊 ミュート"}</button>
+        <input type="range" min="0" max="100" value="${volPct}" data-ep-vol="${esc(u)}" aria-label="${esc(mapName(d))} の音量" />
+        <span class="num sub">${volPct}%</span>
+        ${!isMain ? `<button class="tiny-btn" data-ep-def="${esc(u)}" data-role="main">いつも使う</button>` : ""}
+        ${!isComm ? `<button class="tiny-btn" data-ep-def="${esc(u)}" data-role="comm">通話用</button>` : ""}
+      </div>`
+        : ""
+    }
+    ${sessHtml}
+  </div>`;
 }
 
 /** その機器で鳴らしている (録っている) アプリ。Windows の中のサービスは「Windows の音」にまとめる */
@@ -563,11 +655,11 @@ function audioCardHtml(c, showVirtual) {
           audioRank(x.dev) - audioRank(y.dev) ||
           mapName(x.dev).localeCompare(mapName(y.dev), "ja"),
       )
-      .map((it) => devRow({ ...it, extraHtml: audioRowExtra(it.dev) }))
+      .map(audioRowHtml)
       .join("") || `<div class="sub">ありません</div>`;
   return `<section class="mcard" data-card="audio" style="grid-area:audio">
     <h3><span class="mic-wrap big">${iconSvg("sound", 34)}</span>音<span class="mcount">${c.items.length} 個</span></h3>
-    <p class="sub">緑のバーが今の音の大きさです。「いつも使う」「通話で使う」は Windows の既定の機器です。</p>
+    <p class="sub">緑のバーが今の音の大きさです。ここからミュート・音量・既定の機器をそのまま変えられます。</p>
     <h4 class="asub">鳴らす（スピーカー・ヘッドホン）</h4><div class="mlist">${part(false)}</div>
     <h4 class="asub">録る（マイク）</h4><div class="mlist">${part(true)}</div>
     ${vnote(c, showVirtual)}
@@ -587,16 +679,24 @@ function updateMeters() {
 }
 
 async function pollAudio() {
+  if (mapState.dragging) return;
   try {
     const a = await invoke("get_audio_state");
     mapState.audio = a;
-    // 既定の機器や鳴らしているアプリが変わったときだけ、箱を描き直す
+    // 既定の機器・ミュート・鳴らしているアプリが変わったときだけ、箱を描き直す
     const sig = JSON.stringify([
       a.render,
       a.render_comm,
       a.capture,
       a.capture_comm,
-      a.endpoints.map((e) => e.id + ":" + e.apps.join(",")),
+      a.endpoints.map(
+        (e) =>
+          e.id +
+          ":" +
+          e.muted +
+          ":" +
+          (e.sessions || []).map((s) => s.pid + ":" + s.muted).join(","),
+      ),
     ]);
     if (sig !== mapState.audioSig) {
       mapState.audioSig = sig;
@@ -751,6 +851,18 @@ async function loadMap(withExtra) {
     await loadOverviewData(withExtra);
     renderMap();
     pollAudio();
+    invoke("get_monitor_usage")
+      .then((u) => {
+        mapState.monUsage = u || [];
+        if (mapVisible() && !mapState.dragging) renderMap();
+      })
+      .catch(() => {});
+    invoke("get_usb_ports")
+      .then((p) => {
+        state.usbPorts = p || {};
+        if (mapVisible() && !mapState.dragging) renderMap();
+      })
+      .catch(() => {});
   } catch (e) {
     document.getElementById("mInfo").textContent = "読めませんでした: " + e;
   } finally {
@@ -770,7 +882,55 @@ setInterval(() => {
   if (mapVisible() && mapState.ov && !document.hidden) pollAudio();
 }, 500);
 
-document.getElementById("map").addEventListener("click", (e) => {
+document.getElementById("map").addEventListener("click", async (e) => {
+  const brAll = e.target.closest("[data-br-all]");
+  if (brAll) {
+    const pct = Number(brAll.dataset.brAll);
+    const msg = document.getElementById("monBrMsg");
+    if (msg) setMsg(msg, `明るさを ${pct}% に変えています…`);
+    try {
+      const n = await invoke("set_all_monitor_brightness", { pct });
+      mapState.monUsage = await invoke("get_monitor_usage").catch(() => mapState.monUsage);
+      renderMap();
+      const m2 = document.getElementById("monBrMsg");
+      if (m2) setMsg(m2, `${n} 台の明るさを ${pct}% にしました`, "good");
+    } catch (err) {
+      if (msg) setMsg(msg, String(err), "err");
+    }
+    return;
+  }
+  const epMute = e.target.closest("[data-ep-mute]");
+  if (epMute) {
+    await invoke("set_audio_mute", {
+      id: epMute.dataset.epMute,
+      muted: epMute.dataset.muted === "1",
+    }).catch(() => {});
+    mapState.audioSig = "";
+    pollAudio();
+    return;
+  }
+  const epDef = e.target.closest("[data-ep-def]");
+  if (epDef) {
+    await invoke("set_default_audio", {
+      id: epDef.dataset.epDef,
+      role: epDef.dataset.role,
+    }).catch((err) => alert(String(err)));
+    mapState.audioSig = "";
+    pollAudio();
+    return;
+  }
+  const sessMute = e.target.closest("[data-sess-mute]");
+  if (sessMute) {
+    await invoke("set_audio_session_volume", {
+      endpointId: sessMute.dataset.sessMute,
+      pid: Number(sessMute.dataset.pid),
+      volume: Number(sessMute.dataset.vol),
+      muted: sessMute.dataset.muted === "1",
+    }).catch(() => {});
+    mapState.audioSig = "";
+    pollAudio();
+    return;
+  }
   const g = e.target.closest("[data-goto]");
   if (g) {
     document.querySelector(`[data-tab="${g.dataset.goto}"]`)?.click();
@@ -778,6 +938,57 @@ document.getElementById("map").addEventListener("click", (e) => {
   }
   const b = e.target.closest("[data-open]");
   if (b) openDetail(b.dataset.open);
+});
+
+const mapEl = document.getElementById("map");
+mapEl.addEventListener("pointerdown", (e) => {
+  if (e.target.tagName === "INPUT" && e.target.type === "range")
+    mapState.dragging = true;
+});
+window.addEventListener("pointerup", () => {
+  mapState.dragging = false;
+});
+mapEl.addEventListener("input", (e) => {
+  const inp = e.target;
+  if (inp.dataset.monBr) {
+    const max = Number(inp.dataset.monMax) || 100;
+    const val = Math.round((Number(inp.value) / max) * 100);
+    const lbl = inp.nextElementSibling;
+    if (lbl) lbl.textContent = val + "%";
+  } else if (inp.dataset.epVol || inp.dataset.sessVol) {
+    const lbl = inp.nextElementSibling;
+    if (lbl) lbl.textContent = inp.value + "%";
+  }
+});
+mapEl.addEventListener("change", async (e) => {
+  const inp = e.target;
+  mapState.dragging = false;
+  if (inp.dataset.monBr) {
+    const msg = document.getElementById("monBrMsg");
+    try {
+      await invoke("set_monitor_brightness", {
+        gdiName: inp.dataset.monBr,
+        value: Number(inp.value),
+      });
+      const u = mapState.monUsage.find((x) => up(x.gdi_name) === up(inp.dataset.monBr));
+      if (u) u.brightness = Number(inp.value);
+      if (msg) setMsg(msg, "明るさを変えました", "good");
+    } catch (err) {
+      if (msg) setMsg(msg, String(err), "err");
+    }
+  } else if (inp.dataset.epVol) {
+    await invoke("set_audio_volume", {
+      id: inp.dataset.epVol,
+      volume: Number(inp.value) / 100,
+    }).catch(() => {});
+  } else if (inp.dataset.sessVol) {
+    await invoke("set_audio_session_volume", {
+      endpointId: inp.dataset.sessVol,
+      pid: Number(inp.dataset.pid),
+      volume: Number(inp.value) / 100,
+      muted: inp.dataset.muted === "1",
+    }).catch(() => {});
+  }
 });
 document.getElementById("mVirtual").addEventListener("change", renderMap);
 document.getElementById("mText").addEventListener("input", renderMap);

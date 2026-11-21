@@ -3,20 +3,23 @@
 mod audio;
 mod browser;
 mod devices;
+mod diag;
 mod diskrate;
 mod display;
 mod overview;
 mod power;
+mod ram;
 mod smart;
 mod sound;
 mod spec;
 mod store;
+mod usbinfo;
 mod watch;
 
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
-use tauri::State;
+use tauri::{Manager, State};
 use watch::{now_ms, Shared};
 
 #[derive(Serialize)]
@@ -223,6 +226,13 @@ async fn get_cache_policy() -> Result<Vec<browser::BrowserCache>, String> {
     tauri::async_runtime::spawn_blocking(browser::list).await.map_err(|e| e.to_string())
 }
 
+/// ブラウザーを閉じて、タブごと開き直す (管理者で動いているときは閉じるだけ)
+#[tauri::command]
+async fn restart_browser(id: String) -> Result<String, String> {
+    let admin = is_admin();
+    tauri::async_runtime::spawn_blocking(move || browser::restart(&id, admin)).await.map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 async fn set_cache_policy(id: String, small: bool) -> Result<Vec<browser::BrowserCache>, String> {
     tauri::async_runtime::spawn_blocking(move || browser::set(&id, small)).await.map_err(|e| e.to_string())?
@@ -257,6 +267,168 @@ async fn get_overview_extra() -> Result<overview::Extra, String> {
     tauri::async_runtime::spawn_blocking(overview::extra).await.map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+async fn get_usb_ports() -> Result<HashMap<String, usbinfo::UsbPortInfo>, String> {
+    tauri::async_runtime::spawn_blocking(usbinfo::query_all).await.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_proc_io_rates() -> Result<Vec<diskrate::ProcIoRate>, String> {
+    tauri::async_runtime::spawn_blocking(diskrate::proc_io_rates)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn reset_proc_io_totals() {
+    diskrate::reset_proc_totals();
+}
+
+#[tauri::command]
+async fn set_monitor_brightness(gdi_name: String, value: u32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || display::set_brightness(&gdi_name, value))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_all_monitor_brightness(pct: u32) -> Result<usize, String> {
+    tauri::async_runtime::spawn_blocking(move || display::set_all_brightness(pct))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_wake_info() -> Result<power::WakeInfo, String> {
+    tauri::async_runtime::spawn_blocking(power::get_wake_info)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn disable_device_wake(device_name: String) -> Result<(), String> {
+    need_admin()?;
+    tauri::async_runtime::spawn_blocking(move || power::disable_device_wake(&device_name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_audio_mute(id: String, muted: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || audio::set_endpoint_mute(&id, muted))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_audio_volume(id: String, volume: f32) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || audio::set_endpoint_volume(&id, volume))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_audio_session_volume(endpoint_id: String, pid: u32, volume: f32, muted: bool) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || audio::set_session_volume(&endpoint_id, pid, volume, muted))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn set_default_audio(id: String, role: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || audio::set_default_endpoint(&id, &role))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+fn get_app_settings() -> store::AppSettings {
+    store::load_settings()
+}
+
+#[tauri::command]
+fn save_app_settings(settings: store::AppSettings) -> Result<store::AppSettings, String> {
+    store::save_settings(&settings)
+}
+
+#[tauri::command]
+fn get_autostart() -> bool {
+    diag::get_autostart()
+}
+
+#[tauri::command]
+fn set_autostart(on: bool) -> Result<bool, String> {
+    diag::set_autostart(on)?;
+    Ok(diag::get_autostart())
+}
+
+#[tauri::command]
+fn test_notification() {
+    diag::notify_toast("USB 見張り", "通知のテストです。異常があればこのようにお知らせします。");
+}
+
+#[tauri::command]
+fn get_baseline() -> Option<serde_json::Value> {
+    store::load_baseline()
+}
+
+#[tauri::command]
+fn save_baseline(snapshot: serde_json::Value) -> Result<(), String> {
+    store::save_baseline(&snapshot)
+}
+
+#[tauri::command]
+async fn get_system_events() -> Result<Vec<diag::SysEvent>, String> {
+    tauri::async_runtime::spawn_blocking(diag::get_system_events)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_startup_apps() -> Result<Vec<diag::StartupApp>, String> {
+    let admin = is_admin();
+    tauri::async_runtime::spawn_blocking(move || diag::get_startup_apps(admin))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn set_startup_enabled(scope: String, name: String, enabled: bool) -> Result<(), String> {
+    let admin = is_admin();
+    tauri::async_runtime::spawn_blocking(move || diag::set_startup_enabled(&scope, &name, enabled, admin))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn eject_device(id: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || devices::eject_device(&id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn remove_ghost_device(id: String) -> Result<(), String> {
+    need_admin()?;
+    tauri::async_runtime::spawn_blocking(move || devices::remove_ghost_device(&id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+async fn get_ram_status(with_temp: bool) -> Result<ram::RamStatus, String> {
+    tauri::async_runtime::spawn_blocking(move || ram::status(with_temp))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn boost_ram(clean_temp: bool) -> Result<ram::BoostResult, String> {
+    tauri::async_runtime::spawn_blocking(move || ram::boost(clean_temp, false))
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// 1 つだけ開くための目印 (名前付きミューテックス)。取れたら true。
 /// 取れたハンドルはアプリが終わるまで持ち続ける。
 fn take_single_instance() -> bool {
@@ -283,11 +455,12 @@ fn take_single_instance() -> bool {
 /// すでに開いている窓を前に出す。見つからなければ false。
 fn focus_existing() -> bool {
     use windows::core::w;
-    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE};
+    use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOW};
     unsafe {
         for title in [w!("USB 見張り"), w!("USB 見張り（管理者）")] {
             if let Ok(h) = FindWindowW(None, title) {
                 if !h.is_invalid() {
+                    let _ = ShowWindow(h, SW_SHOW);
                     let _ = ShowWindow(h, SW_RESTORE);
                     let _ = SetForegroundWindow(h);
                     return true;
@@ -324,6 +497,7 @@ fn main() {
         .manage(shared.clone())
         .setup(move |app| {
             watch::start(app.handle().clone(), shared.clone());
+            ram::start_auto_worker(app.handle().clone());
             let title = if is_admin() { "USB 見張り（管理者）" } else { "USB 見張り" };
             // 窓はここで作る (試験用のビルドだけ、外から画面を操作する口 9333 番を開くため)
             let mut args = String::from("--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection");
@@ -345,10 +519,12 @@ fn main() {
                 .unwrap_or_else(std::env::temp_dir)
                 .join("usb-watch")
                 .join(folder);
+            let start_minimized = std::env::args().any(|a| a == "--minimized");
             let built = tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::App("index.html".into()))
                 .title(title)
                 .inner_size(1180.0, 800.0)
                 .min_inner_size(760.0, 520.0)
+                .visible(!start_minimized)
                 .additional_browser_args(&args)
                 .data_directory(data_dir)
                 .build();
@@ -358,7 +534,65 @@ fn main() {
                 ));
                 std::process::exit(1);
             }
+            // タスクトレイのアイコン (閉じてトレイにしまう設定のときや、いつでも呼び戻せるように)
+            if let (Ok(open_i), Ok(boost_i), Ok(quit_i)) = (
+                tauri::menu::MenuItem::with_id(app, "open", "画面を開く", true, None::<&str>),
+                tauri::menu::MenuItem::with_id(app, "boost", "今すぐ RAM を解放（ブースト）", true, None::<&str>),
+                tauri::menu::MenuItem::with_id(app, "quit", "終了する", true, None::<&str>),
+            ) {
+                if let Ok(menu) = tauri::menu::Menu::with_items(app, &[&open_i, &boost_i, &quit_i]) {
+                    let mut tb = tauri::tray::TrayIconBuilder::with_id("main-tray")
+                        .tooltip(title)
+                        .menu(&menu)
+                        .on_menu_event(|app, ev| match ev.id.as_ref() {
+                            "open" => {
+                                if let Some(w) = app.get_webview_window("main") {
+                                    let _ = w.show();
+                                    let _ = w.unminimize();
+                                    let _ = w.set_focus();
+                                }
+                            }
+                            "boost" => {
+                                std::thread::spawn(|| {
+                                    let r = ram::boost(false, false);
+                                    diag::notify_toast(
+                                        "USB 見張り：RAM を解放しました",
+                                        &format!("{} MB 解放（使用率 {}% → {}%）", r.freed_mb, r.before_pct, r.after_pct),
+                                    );
+                                });
+                            }
+                            "quit" => app.exit(0),
+                            _ => {}
+                        })
+                        .on_tray_icon_event(|tray, ev| {
+                            if let tauri::tray::TrayIconEvent::Click {
+                                button: tauri::tray::MouseButton::Left,
+                                button_state: tauri::tray::MouseButtonState::Up,
+                                ..
+                            } = ev
+                            {
+                                if let Some(w) = tray.app_handle().get_webview_window("main") {
+                                    let _ = w.show();
+                                    let _ = w.unminimize();
+                                    let _ = w.set_focus();
+                                }
+                            }
+                        });
+                    if let Some(ic) = app.default_window_icon().cloned() {
+                        tb = tb.icon(ic);
+                    }
+                    let _ = tb.build(app);
+                }
+            }
             Ok(())
+        })
+        .on_window_event(|w, ev| {
+            if let tauri::WindowEvent::CloseRequested { api, .. } = ev {
+                if store::load_settings().minimize_to_tray {
+                    api.prevent_close();
+                    let _ = w.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_devices,
@@ -385,6 +619,32 @@ fn main() {
             get_disk_rates,
             get_cache_policy,
             set_cache_policy,
+            restart_browser,
+            get_usb_ports,
+            get_proc_io_rates,
+            reset_proc_io_totals,
+            set_monitor_brightness,
+            set_all_monitor_brightness,
+            get_wake_info,
+            disable_device_wake,
+            set_audio_mute,
+            set_audio_volume,
+            set_audio_session_volume,
+            set_default_audio,
+            get_app_settings,
+            save_app_settings,
+            get_autostart,
+            set_autostart,
+            test_notification,
+            get_baseline,
+            save_baseline,
+            get_system_events,
+            get_startup_apps,
+            set_startup_enabled,
+            eject_device,
+            remove_ghost_device,
+            get_ram_status,
+            boost_ram,
         ])
         .run(tauri::generate_context!())
         .expect("起動できませんでした");

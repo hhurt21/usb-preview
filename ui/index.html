@@ -948,12 +948,302 @@
         align-items: center;
         margin-bottom: 12px;
       }
+      /* 追加機能用スタイル */
+      .small-btn {
+        font-size: 13px;
+        padding: 4px 10px;
+        min-height: 30px;
+      }
+      .tiny-btn {
+        font-size: 12px;
+        padding: 2px 8px;
+        min-height: 26px;
+        border-radius: 6px;
+      }
+      .usb-tag {
+        display: inline-block;
+        font-size: 12px;
+        padding: 0 6px;
+        border-radius: 999px;
+        background: var(--gone-bg);
+        color: var(--text);
+        margin-left: 4px;
+      }
+      .usb-warn {
+        display: block;
+        color: var(--off);
+        background: var(--off-bg);
+        font-size: 13px;
+        font-weight: 600;
+        padding: 2px 8px;
+        border-radius: 6px;
+        margin-top: 3px;
+      }
+      .mon-br {
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+        display: grid;
+        gap: 6px;
+      }
+      .mon-br-head {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .mon-br-row {
+        display: grid;
+        grid-template-columns: minmax(90px, 160px) 1fr 44px;
+        gap: 8px;
+        align-items: center;
+      }
+      .mon-br-name {
+        font-size: 14px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .mrow-audio {
+        display: grid;
+        gap: 4px;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        background: var(--bg);
+      }
+      .mrow-audio.mic-muted {
+        border-color: var(--bad);
+      }
+      .mrow-audio-top {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .mrow-head-btn {
+        flex: 1;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 0;
+        min-height: 0;
+        border: none;
+        background: none;
+        text-align: left;
+      }
+      .abadge.muted {
+        color: var(--bad);
+        background: var(--bad-bg);
+      }
+      .audio-ctl {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        flex-wrap: wrap;
+        margin-top: 2px;
+      }
+      .audio-ctl input[type="range"],
+      .sess-row input[type="range"] {
+        width: 90px;
+      }
+      .sess-list {
+        display: grid;
+        gap: 4px;
+        margin-top: 4px;
+        padding-top: 4px;
+        border-top: 1px dashed var(--line);
+      }
+      .sess-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 13px;
+        flex-wrap: wrap;
+      }
+      .sess-name {
+        min-width: 80px;
+        max-width: 140px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .proc-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 8px;
+      }
+      .proc-row {
+        display: grid;
+        gap: 2px;
+      }
+      .proc-head {
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .hist-stats {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 12px 14px;
+        margin-bottom: 12px;
+        display: grid;
+        gap: 10px;
+      }
+      .hist-bars {
+        display: grid;
+        grid-template-columns: repeat(24, 1fr);
+        gap: 3px;
+        align-items: end;
+        height: 76px;
+        padding-top: 6px;
+      }
+      .hist-bar-col {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        height: 100%;
+        gap: 2px;
+      }
+      .hist-bar-fill {
+        width: 100%;
+        min-height: 2px;
+        border-radius: 3px 3px 0 0;
+        background: var(--accent);
+      }
+      .hist-bar-fill.zero {
+        background: var(--line);
+        height: 2px !important;
+      }
+      .hist-bar-lbl {
+        font-size: 10px;
+        color: var(--muted);
+      }
+      .hist-top {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .hist-err-note {
+        margin-top: 4px;
+        padding: 4px 8px;
+        border-radius: 6px;
+        background: var(--bad-bg);
+        color: var(--bad);
+        font-size: 13px;
+      }
+      .diag-list {
+        display: grid;
+        gap: 8px;
+      }
+      .diag-item {
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        border-left-width: 5px;
+        background: var(--bg);
+      }
+      .diag-item.bad {
+        border-left-color: var(--bad);
+      }
+      .diag-item.warn {
+        border-left-color: var(--off);
+      }
+      .diag-item.info {
+        border-left-color: var(--accent);
+      }
+      .diag-ok {
+        padding: 10px 12px;
+        border-radius: 8px;
+        background: var(--ok-bg);
+        color: var(--ok);
+        font-weight: 600;
+      }
+      .diag-pre {
+        margin: 4px 0 10px;
+        padding: 8px 10px;
+        border-radius: 8px;
+        background: var(--bg);
+        border: 1px solid var(--line);
+        font-family: Consolas, "Cascadia Mono", monospace;
+        font-size: 13px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        max-height: 180px;
+        overflow: auto;
+      }
+      .diag-ul {
+        margin: 4px 0 10px;
+        padding-left: 0;
+        list-style: none;
+        display: grid;
+        gap: 6px;
+      }
+      .diag-ul li {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+        padding: 6px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+      }
+      .diag-ev-head {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .startup-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        flex-wrap: wrap;
+        padding: 8px 10px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+      }
+      .startup-main {
+        flex: 1;
+        min-width: 240px;
+      }
+      .ghost-list {
+        display: grid;
+        gap: 6px;
+        max-height: 300px;
+        overflow: auto;
+      }
+      .ghost-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--bg);
+        cursor: pointer;
+      }
+      .scard h4 {
+        margin: 10px 0 4px;
+        font-size: 15px;
+      }
     </style>
   </head>
   <body>
     <header>
       <h1>USB 見張り</h1>
       <div class="admin-note" id="adminNote"></div>
+      <div class="row-btns" id="ramHeader">
+        <span class="sub" id="ramHeaderPct">RAM …</span>
+        <button class="small-btn" id="ramQuickBoost" title="今すぐ RAM を解放（ブースト）">RAM 解放</button>
+      </div>
     </header>
     <main>
       <div class="recent" id="recent" aria-live="polite"></div>
@@ -973,6 +1263,7 @@
         <button role="tab" data-tab="map" aria-selected="false">全体図</button>
         <button role="tab" data-tab="spec" aria-selected="false">PC のスペック</button>
         <button role="tab" data-tab="ssd" aria-selected="false">SSD の書き込み</button>
+        <button role="tab" data-tab="diag" aria-selected="false">診断・お手入れ</button>
         <button role="tab" data-tab="tree" aria-selected="false">
           つながり方
         </button>
@@ -1043,6 +1334,14 @@
         <div class="spec" id="ssd"><div class="empty">読んでいます…</div></div>
       </section>
 
+      <section id="tab-diag" hidden>
+        <div class="mtools">
+          <button id="diagReload">読み直す</button>
+          <span class="sub">PC の変化チェック・スリープ診断・エラー履歴・自動起動整理・古い USB 機器のお掃除</span>
+        </div>
+        <div class="spec" id="diag"><div class="empty">読んでいます…</div></div>
+      </section>
+
       <section id="tab-tree" hidden>
         <p class="sub">
           コントローラー（PC本体の USB の口のまとまり）→ ハブ → 機器
@@ -1054,12 +1353,30 @@
       <section id="tab-hist" hidden>
         <div class="row-btns" style="margin-bottom: 10px">
           <button id="histReload">読み直す</button>
+          <button id="histSysErr">同じ時間帯の Windows エラーと並べて見る</button>
           <button id="openFolder">保存先のフォルダーを開く</button>
         </div>
+        <div id="histStats"></div>
         <div class="hist" id="hist"></div>
       </section>
 
       <section id="tab-settings" hidden>
+        <div class="card">
+          <h2>トレイ常駐・通知・自動起動</h2>
+          <p>
+            窓を閉じてもタスクトレイにしまって裏で見張り、よく外れる機器や見張っている機器が外れたときだけ
+            Windows 通知でお知らせします（機器ごとの通知は、一覧の「くわしく・操作」から選べます）。
+          </p>
+          <div style="display: grid; gap: 8px; margin-bottom: 10px">
+            <label><input type="checkbox" id="optTray" /> × ボタンで終了せずタスクトレイにしまって裏で見張る</label>
+            <label><input type="checkbox" id="optFlapNotify" /> 10分で3回以上外れたら Windows 通知を出す</label>
+            <label><input type="checkbox" id="optAutostart" /> Windows 起動時に自動で裏起動する（タスクトレイに常駐）</label>
+          </div>
+          <div class="row-btns">
+            <button id="btnTestNotify">通知をテストする</button>
+          </div>
+          <div class="msgline" id="appOptMsg"></div>
+        </div>
         <div class="card">
           <h2>つないだ・外したときの音</h2>
           <p>
@@ -1122,6 +1439,16 @@
         devices: [],
         controllers: [],
         names: { devices: {}, ports: {} },
+        usbPorts: {}, // "親ID大文字|ポート番号" → { speed, speed_label, max_power_ma, slow_port }
+        settings: {
+          minimize_to_tray: false,
+          notify_on_flap: true,
+          watched_ids: [],
+          auto_ram_boost: false,
+          auto_ram_threshold_pct: 80,
+          auto_ram_interval_min: 15,
+        },
+        histSysEvents: null,
         admin: false,
         power: null, // ID(大文字) → 省電力で切ってよいか
         recent: [],
@@ -1263,11 +1590,19 @@
             subs.push(`機器が名乗った名前：${d.bus_name}`);
           if (d.vid && d.pid && d.vid !== "0000")
             subs.push(`VID ${d.vid} / PID ${d.pid}`);
+          const pinfo = portKey(d) && state.usbPorts ? state.usbPorts[portKey(d)] : null;
+          if (pinfo) {
+            const ptxt = pinfo.speed_label + (pinfo.max_power_ma ? `・${pinfo.max_power_ma}mA` : "");
+            subs.push(ptxt);
+          }
+          const slow = pinfo?.slow_port
+            ? `<div class="usb-warn">⚠ USB 3.0 対応ですが USB 2.0 で動いています（口・ケーブルを確認）</div>`
+            : "";
           const flap = isFlap(d)
             ? `<div class="flapnote">くり返し外れています（10分で${d.removed_10min}回）</div>`
             : "";
           return `<tr class="row ${isFlap(d) ? "flap" : ""}" data-id="${esc(d.id)}">
-      <td><div><b>${esc(displayName(d))}</b></div>${subs.map((s) => `<div class="sub">${esc(s)}</div>`).join("")}${flap}</td>
+      <td><div><b>${esc(displayName(d))}</b></div>${subs.map((s) => `<div class="sub">${esc(s)}</div>`).join("")}${slow}${flap}</td>
       <td>${statusBadge(d)}</td>
       <td>${esc(placeText(d))}</td>
       <td class="num">${d.removed_10min || 0}回（10分）<div class="sub">合計 ${d.removed_total || 0}回</div></td>
@@ -1303,10 +1638,14 @@
           const ch = depth < 12 ? kids[up(d.id)] || [] : [];
           const port =
             d.port != null ? `<span class="sub">ポート${d.port}</span>` : "";
+          const pinfo = portKey(d) && state.usbPorts ? state.usbPorts[portKey(d)] : null;
+          const spTag = pinfo
+            ? `<span class="usb-tag">${esc(pinfo.speed_label)}${pinfo.max_power_ma ? ` / ${pinfo.max_power_ma}mA` : ""}</span>`
+            : "";
           const btn = state.devices.includes(d)
             ? `<button data-open="${esc(d.id)}">くわしく・操作</button>`
             : "";
-          return `<li><span class="node ${isFlap(d) ? "flap" : ""}">${port}<b>${esc(displayName(d))}</b>${state.devices.includes(d) ? statusBadge(d) : ""}${isFlap(d) ? `<span class="flapnote">くり返し外れています</span>` : ""}${btn}</span>
+          return `<li><span class="node ${isFlap(d) ? "flap" : ""}">${port}<b>${esc(displayName(d))}</b>${spTag}${state.devices.includes(d) ? statusBadge(d) : ""}${pinfo?.slow_port ? `<span class="usb-warn" style="display:inline-block;margin:0">⚠ USB 2.0 接続</span>` : ""}${isFlap(d) ? `<span class="flapnote">くり返し外れています</span>` : ""}${btn}</span>
       ${ch.length ? `<ul>${ch.map((c) => node(c, depth + 1)).join("")}</ul>` : ""}</li>`;
         };
         const roots = state.controllers
@@ -1505,6 +1844,9 @@
                 (x.name || "") + " " + (x.bus_name || ""),
               ),
           );
+        const pinfo = pk && state.usbPorts ? state.usbPorts[pk] : null;
+        const isWatched = (state.settings.watched_ids || []).includes(up(d.id));
+        const isUsbDev = up(d.id).startsWith("USB\\");
         body.innerHTML = `
     <dl class="kv">
       <dt>状態</dt><dd>${statusBadge(d)} ${esc(problemText)}</dd>
@@ -1513,11 +1855,21 @@
       ${d.manufacturer ? `<dt>メーカー</dt><dd>${esc(d.manufacturer)}</dd>` : ""}
       ${d.class ? `<dt>種類</dt><dd>${esc(d.class)}</dd>` : ""}
       <dt>場所</dt><dd>${esc(placeText(d)) || "不明"} ${d.location ? `<span class="sub">（${esc(d.location)}）</span>` : ""}</dd>
-      ${up(d.id).startsWith("USB\\") ? `<dt>外れた回数</dt><dd>10分で ${d.removed_10min || 0} 回 ／ アプリを開いてから ${d.removed_total || 0} 回</dd>` : ""}
+      ${pinfo ? `<dt>速度・電力</dt><dd>${esc(pinfo.speed_label)}${pinfo.max_power_ma ? ` ／ 最大 ${pinfo.max_power_ma} mA` : ""}${pinfo.slow_port ? `<div class="usb-warn">⚠ USB 3.0 以上に対応していますが、今は USB 2.0 で動いています。青い口や対応ケーブルに刺し替えると速くなります。</div>` : ""}</dd>` : ""}
+      ${isUsbDev ? `<dt>外れた回数</dt><dd>10分で ${d.removed_10min || 0} 回 ／ アプリを開いてから ${d.removed_total || 0} 回</dd>` : ""}
       ${d.last_arrival ? `<dt>最後につながった</dt><dd>${esc(new Date(d.last_arrival).toLocaleString("ja-JP"))}</dd>` : ""}
       ${d.last_removal ? `<dt>最後に外れた</dt><dd>${esc(new Date(d.last_removal).toLocaleString("ja-JP"))}</dd>` : ""}
       <dt>ID</dt><dd class="sub">${esc(d.id)}</dd>
     </dl>
+    ${
+      isUsbDev
+        ? `<div class="section">
+      <h3>見張り通知</h3>
+      <label><input type="checkbox" id="watchChk" ${isWatched ? "checked" : ""} /> この機器が外れたら Windows 通知でお知らせする</label>
+      <div class="msgline" id="watchMsg"></div>
+    </div>`
+        : ""
+    }
     <div class="section">
       <h3>名前をつける</h3>
       <div class="row-btns">
@@ -1536,15 +1888,17 @@
       <div class="msgline" id="nameMsg"></div>
     </div>
     <div class="section">
-      <h3>有効・無効</h3>
+      <h3>有効・無効${d.present && d.removable ? "・安全に取り外す" : ""}</h3>
       ${adminNote}
       ${isCore && d.status !== "disabled" ? `<p class="flapnote">この機器（${esc(d.class)}）を無効にすると、画面が消える・ディスクが使えない・ネットにつながらないなど、PC が正しく動かなくなることがあります。</p>` : ""}
       ${d.is_hub && d.status !== "disabled" ? `<p class="flapnote">ハブを無効にすると、その先につながっている機器も全部使えなくなります。</p>` : ""}
       ${isInput && d.status !== "disabled" ? `<p class="flapnote">キーボードやマウスを無効にすると、操作できなくなることがあります。</p>` : ""}
       <div class="row-btns">
+        ${d.present && d.removable ? `<button class="primary" id="btnEject">安全に取り外す</button>` : ""}
         <button id="btnEnable" ${d.status === "disabled" ? "" : "disabled"}>有効にする</button>
         <button class="danger" id="btnDisable" ${d.present && d.status !== "disabled" ? "" : "disabled"}>無効にする</button>
         <button id="btnRestart" ${d.present && d.status !== "disabled" ? "" : "disabled"}>つなぎ直す（無効にしてすぐ戻す）</button>
+        ${!d.present && isUsbDev ? `<button class="danger" id="btnGhostDel">この古い記録を削除</button>` : ""}
       </div>
       <div class="msgline" id="enMsg"></div>
     </div>
@@ -1627,6 +1981,49 @@
             "無効にしました",
           );
         };
+        const watchChk = document.getElementById("watchChk");
+        if (watchChk)
+          watchChk.onchange = async () => {
+            const wm = document.getElementById("watchMsg");
+            const ids = new Set(state.settings.watched_ids || []);
+            if (watchChk.checked) ids.add(up(d.id));
+            else ids.delete(up(d.id));
+            try {
+              state.settings = await invoke("save_app_settings", {
+                settings: { ...state.settings, watched_ids: [...ids] },
+              });
+              setMsg(
+                wm,
+                watchChk.checked
+                  ? "外れたら通知するようにしました"
+                  : "通知を止めました",
+                "good",
+              );
+            } catch (e) {
+              setMsg(wm, String(e), "err");
+            }
+          };
+        const btnEject = document.getElementById("btnEject");
+        if (btnEject)
+          btnEject.onclick = () =>
+            run(
+              "eject_device",
+              { id: d.id },
+              "安全に取り外しています…",
+              "安全に取り外せました。ケーブルを抜いて大丈夫です",
+            );
+        const btnGhostDel = document.getElementById("btnGhostDel");
+        if (btnGhostDel)
+          btnGhostDel.onclick = async () => {
+            if (!confirm("この古い USB 機器の記録を Windows から削除しますか？"))
+              return;
+            await run(
+              "remove_ghost_device",
+              { id: d.id },
+              "削除しています…",
+              "削除しました",
+            );
+          };
         document.getElementById("btnRestart").onclick = () =>
           run(
             "restart_device",
@@ -1663,19 +2060,140 @@
         }
         return out;
       }
+      function renderHistStats(h) {
+        const el = document.getElementById("histStats");
+        const drops = h.filter((c) => c.kind === "removed" || c.kind === "blink");
+        if (!drops.length) {
+          el.innerHTML = "";
+          return;
+        }
+        const hours = new Array(24).fill(0);
+        const byDev = new Map();
+        for (const ch of drops) {
+          const hr = new Date(ch.time).getHours();
+          hours[hr]++;
+          for (const it of ch.items || []) {
+            const nm = state.names.devices[up(it.id)] || it.name;
+            byDev.set(nm, (byDev.get(nm) || 0) + 1);
+          }
+        }
+        const maxH = Math.max(1, ...hours);
+        const top = [...byDev.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 6);
+        el.innerHTML = `<div class="hist-stats">
+          <div><b>外れた傾向まとめ</b> <span class="sub">（記録された「外れた／すぐ戻った」合計 ${drops.length} 回）</span></div>
+          <div class="hist-top">${top
+            .map(
+              ([nm, cnt]) =>
+                `<span class="badge ${cnt >= 3 ? "problem" : "absent"}">${esc(nm)}：${cnt}回</span>`,
+            )
+            .join("")}</div>
+          <div>
+            <div class="sub">時間帯ごとの外れた回数（0時〜23時）</div>
+            <div class="hist-bars">${hours
+              .map(
+                (v, hr) =>
+                  `<div class="hist-bar-col" title="${hr}時台：${v}回"><div class="hist-bar-fill ${v ? "" : "zero"}" style="height:${Math.round((v / maxH) * 56)}px"></div><span class="hist-bar-lbl">${hr % 3 === 0 ? hr : ""}</span></div>`,
+              )
+              .join("")}</div>
+          </div>
+        </div>`;
+      }
+
       async function loadHistory() {
         const h = dedupeChanges(await invoke("get_history", { limit: 500 }));
+        renderHistStats(h);
+        const sysev = state.histSysEvents;
         document.getElementById("hist").innerHTML =
-          h.map((ch) => changeHtml(ch, false)).join("") ||
-          `<div class="empty">まだ記録がありません</div>`;
+          h
+            .map((ch) => {
+              let extra = "";
+              if (sysev && (ch.kind === "removed" || ch.kind === "blink")) {
+                const near = sysev.filter((e) => Math.abs(e.time - ch.time) <= 60_000);
+                if (near.length) {
+                  extra = near
+                    .map(
+                      (e) =>
+                        `<div class="hist-err-note">⚡ 前後1分以内の Windows エラー（${esc(fmtTime(e.time))}）：${esc(e.title)}</div>`,
+                    )
+                    .join("");
+                }
+              }
+              return `<div>${changeHtml(ch, false)}${extra}</div>`;
+            })
+            .join("") || `<div class="empty">まだ記録がありません</div>`;
       }
       document.getElementById("histReload").onclick = loadHistory;
+      document.getElementById("histSysErr").onclick = async () => {
+        const b = document.getElementById("histSysErr");
+        b.disabled = true;
+        b.textContent = "Windows エラーを読んでいます…";
+        try {
+          state.histSysEvents = await invoke("get_system_events");
+          await loadHistory();
+          b.textContent = `Windows エラー照合中（直近30日 ${state.histSysEvents.length} 件）`;
+        } catch (e) {
+          alert("読めませんでした: " + e);
+          b.textContent = "同じ時間帯の Windows エラーと並べて見る";
+        } finally {
+          b.disabled = false;
+        }
+      };
       document.getElementById("openFolder").onclick = () =>
         invoke("open_data_folder");
       document.getElementById("openFolder2").onclick = () =>
         invoke("open_data_folder");
 
       // ---------- 設定 ----------
+      async function loadAppSettings() {
+        try {
+          const [s, auto] = await Promise.all([
+            invoke("get_app_settings"),
+            invoke("get_autostart"),
+          ]);
+          state.settings = s;
+          document.getElementById("optTray").checked = !!s.minimize_to_tray;
+          document.getElementById("optFlapNotify").checked = !!s.notify_on_flap;
+          document.getElementById("optAutostart").checked = !!auto;
+        } catch {}
+      }
+      async function saveAppOpts() {
+        const m = document.getElementById("appOptMsg");
+        try {
+          state.settings = await invoke("save_app_settings", {
+            settings: {
+              ...state.settings,
+              minimize_to_tray: document.getElementById("optTray").checked,
+              notify_on_flap: document.getElementById("optFlapNotify").checked,
+            },
+          });
+          setMsg(m, "保存しました", "good");
+        } catch (e) {
+          setMsg(m, String(e), "err");
+        }
+      }
+      document.getElementById("optTray").onchange = saveAppOpts;
+      document.getElementById("optFlapNotify").onchange = saveAppOpts;
+      document.getElementById("optAutostart").onchange = async () => {
+        const m = document.getElementById("appOptMsg");
+        const on = document.getElementById("optAutostart").checked;
+        try {
+          await invoke("set_autostart", { on });
+          setMsg(
+            m,
+            on ? "Windows 起動時に自動で裏起動するようにしました" : "自動起動をオフにしました",
+            "good",
+          );
+        } catch (e) {
+          setMsg(m, String(e), "err");
+        }
+      };
+      document.getElementById("btnTestNotify").onclick = () => {
+        invoke("test_notification");
+        setMsg(document.getElementById("appOptMsg"), "テスト通知を送りました（画面の右下に出ます）", "good");
+      };
+
       async function loadSound() {
         const s = await invoke("get_sound");
         const on = Object.values(s).filter(Boolean).length;
@@ -1726,16 +2244,18 @@
           document
             .querySelectorAll("[data-tab]")
             .forEach((x) => x.setAttribute("aria-selected", String(x === b)));
-          for (const t of ["list", "map", "spec", "ssd", "tree", "hist", "settings"])
+          for (const t of ["list", "map", "spec", "ssd", "diag", "tree", "hist", "settings"])
             document.getElementById("tab-" + t).hidden = t !== b.dataset.tab;
           if (b.dataset.tab === "hist") loadHistory();
           if (b.dataset.tab === "map") loadMap(!mapState.ov);
           if (b.dataset.tab === "ssd") loadSsd();
+          if (b.dataset.tab === "diag") loadDiag();
           if (b.dataset.tab === "spec") {
             if (specState.data) renderSpec();
             else loadSpec(false);
           }
           if (b.dataset.tab === "settings") {
+            loadAppSettings();
             loadSound();
             loadGlobal();
           }
@@ -1773,10 +2293,14 @@
         }
       }
       async function refresh() {
-        const r = await invoke("get_devices");
+        const [r, ports] = await Promise.all([
+          invoke("get_devices"),
+          invoke("get_usb_ports").catch(() => state.usbPorts),
+        ]);
         state.devices = r.devices;
         state.controllers = r.controllers;
         state.names = r.names;
+        state.usbPorts = ports || {};
         renderAll();
       }
       async function loadPower() {
@@ -1801,9 +2325,34 @@
         renderRecent();
       });
 
+      function updateHeaderRam(r) {
+        const el = document.getElementById("ramHeaderPct");
+        if (el && r) {
+          el.textContent = `RAM ${r.used_pct}% (${(r.used_mb / 1024).toFixed(1)}/${(r.total_mb / 1024).toFixed(0)}GB)`;
+        }
+      }
+      document.getElementById("ramQuickBoost").onclick = async () => {
+        const b = document.getElementById("ramQuickBoost");
+        b.disabled = true;
+        b.textContent = "解放中…";
+        try {
+          const r = await invoke("boost_ram", { cleanTemp: false });
+          const st = await invoke("get_ram_status", { withTemp: false });
+          updateHeaderRam(st);
+          b.textContent = `-${r.freed_mb}MB`;
+          setTimeout(() => (b.textContent = "RAM 解放"), 2500);
+        } catch {
+          b.textContent = "RAM 解放";
+        } finally {
+          b.disabled = false;
+        }
+      };
+
       (async () => {
         await loadAdmin();
+        await loadAppSettings();
         await refresh();
+        invoke("get_ram_status", { withTemp: false }).then(updateHeaderRam).catch(() => {});
         const h = dedupeChanges(await invoke("get_history", { limit: 12 }));
         state.recent = h.slice(0, 4);
         renderRecent();
@@ -1816,5 +2365,6 @@
     <script src="map.js"></script>
     <script src="spec.js"></script>
     <script src="ssd.js"></script>
+    <script src="diag.js"></script>
   </body>
 </html>

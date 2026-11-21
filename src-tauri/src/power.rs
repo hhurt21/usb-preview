@@ -89,3 +89,48 @@ pub fn set_global(on: bool) -> Result<(), String> {
     powercfg(&["/setactive", "SCHEME_CURRENT"])?;
     Ok(())
 }
+
+#[derive(serde::Serialize, Clone, Debug)]
+pub struct WakeInfo {
+    /// 最後に PC をスリープから起こした原因 (powercfg /lastwake)
+    pub last_wake: String,
+    /// スリープ解除を許可されている機器 (マウス・LAN など)
+    pub wake_armed: Vec<String>,
+    /// 今スリープを邪魔しているアプリ・音声など (管理者で詳しく見られる)
+    pub requests: String,
+}
+
+fn powercfg_utf8(args: &[&str]) -> String {
+    // powercfg は日本語 Windows では cp932 を出すので PowerShell 経由で UTF-8 にそろえる
+    let arg_str = args.join(" ");
+    let script = format!("[Console]::OutputEncoding = [Text.Encoding]::UTF8; powercfg.exe {arg_str} 2>&1 | Out-String");
+    ps(&script).unwrap_or_default().trim().to_string()
+}
+
+pub fn get_wake_info() -> WakeInfo {
+    let last_wake = powercfg_utf8(&["/lastwake"]);
+    let armed_raw = powercfg_utf8(&["/devicequery", "wake_armed"]);
+    let wake_armed: Vec<String> = armed_raw
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty() && !l.eq_ignore_ascii_case("NONE") && *l != "なし")
+        .map(|l| l.to_string())
+        .collect();
+    let requests = powercfg_utf8(&["/requests"]);
+    WakeInfo { last_wake, wake_armed, requests }
+}
+
+pub fn disable_device_wake(device_name: &str) -> Result<(), String> {
+    if device_name.contains('"') || device_name.contains('\n') || device_name.contains('\r') {
+        return Err("機器の名前に使えない文字があります".into());
+    }
+    let out = Command::new("powercfg.exe")
+        .args(["/devicedisablewake", device_name])
+        .creation_flags(NO_WINDOW)
+        .output()
+        .map_err(|e| e.to_string())?;
+    if !out.status.success() {
+        return Err("スリープ解除を無効にできませんでした (管理者の権限が必要です)".into());
+    }
+    Ok(())
+}

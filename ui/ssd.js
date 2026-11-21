@@ -1,10 +1,30 @@
 // 「SSD の書き込み」タブ。今の書き込みの速さ、ブラウザーのキャッシュの設定、SSD を長持ちさせる説明。
 // index.html の state・invoke・esc・setMsg と、icons.js の iconSvg を使う。
 
-const ssdState = { rates: [], history: new Map(), policy: [], timer: null };
+const ssdState = { rates: [], procRates: [], history: new Map(), policy: [], timer: null };
 
 const mbps = (b) => b / 1024 / 1024;
 const perDayGb = (bps) => (bps * 86400) / 1024 ** 3;
+const fmtMb = (b) => (b >= 1024 ** 3 ? `${(b / 1024 ** 3).toFixed(2)} GB` : `${(b / 1024 / 1024).toFixed(1)} MB`);
+
+function procRateRows() {
+  if (!ssdState.procRates.length) return `<div class="sub">計測しています（2秒ごとに更新します）…</div>`;
+  const maxRate = Math.max(1024 * 1024, ...ssdState.procRates.map((p) => p.write_bytes_per_sec));
+  return ssdState.procRates
+    .map((p) => {
+      const pct = Math.min(100, (p.write_bytes_per_sec / maxRate) * 100);
+      const rateMb = mbps(p.write_bytes_per_sec);
+      const level = rateMb >= 2 ? "high" : rateMb >= 0.3 ? "mid" : "low";
+      return `<div class="proc-row">
+        <div class="proc-head">
+          <span><b>${esc(p.name)}</b>${p.pids > 1 ? ` <span class="sub">（${p.pids} プロセス合算）</span>` : ""}</span>
+          <span class="num"><span class="rate-level ${level}">${rateMb.toFixed(2)} MB/秒</span> <span class="sub">合計 ${fmtMb(p.total_written)}</span></span>
+        </div>
+        <span class="sbar"><span style="width:${pct.toFixed(1)}%"></span></span>
+      </div>`;
+    })
+    .join("");
+}
 
 function rateRows() {
   if (!ssdState.rates.length) return `<div class="sub">読んでいます…</div>`;
@@ -46,13 +66,14 @@ function browserRow(p) {
   return `<div class="pol">
       <div class="pol-head"><b>${esc(p.name)}</b>
         <span class="pol-tag ${p.tested ? "ok" : "warn"}">${p.tested ? "この PC で効くのを確かめた" : "この PC では未確認"}</span></div>
-      <div>今：<span class="state">${esc(STATE_WORD[p.state] || p.state)}</span>${p.detail ? `<span class="sub">　${esc(p.detail)}</span>` : ""}</div>
+      <div>${p.running ? `<span class="pol-tag ok">開いている</span> ` : ""}今：<span class="state">${esc(STATE_WORD[p.state] || p.state)}</span>${p.detail ? `<span class="sub">　${esc(p.detail)}</span>` : ""}</div>
       <div class="sub">${esc(METHOD_WORD[p.method] || "")}</div>
       <div class="row-btns">
         <button class="primary" data-pol="${p.id}" data-small="1" ${!canSet || p.state === "small" ? "disabled" : ""}>キャッシュを小さくする</button>
         <button data-pol="${p.id}" data-small="0" ${!canSet || p.state === "default" ? "disabled" : ""}>元に戻す</button>
+        <button data-restart="${p.id}" ${p.running ? "" : "disabled"}>今すぐ開き直す</button>
       </div>
-      <div class="sub">変えたあと：${p.restart.includes("://") ? `アドレス欄に <code>${esc(p.restart)}</code> と入れて Enter` : esc(p.restart)}</div>
+      <div class="sub">変えたあとは開き直すと効きます（「今すぐ開き直す」で自動。ただし開いていたタブは戻らないことがあります。タブを残すなら下のアドレスで自分で開き直してください）。手で開き直すなら：${p.restart.includes("://") ? `アドレス欄に <code>${esc(p.restart)}</code> と入れて Enter` : esc(p.restart)}</div>
     </div>`;
 }
 
@@ -73,6 +94,15 @@ function renderSsd() {
     <h3><span class="mic-wrap big">${iconSvg("ssd", 32)}</span>今の書き込みの速さ</h3>
     <p class="sub">2秒ごとに読みます。タスク マネージャーと同じ値です。何もしていないときに、ずっと「多い」なら、何かが書き続けています。</p>
     <div class="rates" id="ssdRates">${rateRows()}</div>
+  </section>
+
+  <section class="scard ssd-wide">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0"><span class="mic-wrap big">${iconSvg("pc", 32)}</span>今たくさん読み書きしているアプリ（多い順・通信も入る目安）</h3>
+      <button class="small-btn" data-reset-proc="1">合計をリセット</button>
+    </div>
+    <p class="sub">Windows が数えている「アプリが書き出した量」です。<b>ディスクだけでなく、通信（通話・配信の受信など）やアプリ同士のやり取りも入る</b>ので、SSD に書いていないアプリが上に来ることがあります。あやしいアプリの見当をつけるのに使い、本当にディスクに書いているかは下の「自分で調べる」のリソース モニターで確かめてください。Chrome のようにプロセスがたくさんあるアプリは合算しています（管理者で開くとシステム系アプリも取れます）。</p>
+    <div class="proc-list" id="ssdProcs">${procRateRows()}</div>
   </section>
 
   <section class="scard">
@@ -140,7 +170,12 @@ async function loadSsd() {
 
 async function pollRates() {
   try {
-    ssdState.rates = await invoke("get_disk_rates");
+    const [rates, procs] = await Promise.all([
+      invoke("get_disk_rates"),
+      invoke("get_proc_io_rates").catch(() => []),
+    ]);
+    ssdState.rates = rates;
+    ssdState.procRates = procs;
     for (const r of ssdState.rates) {
       const h = ssdState.history.get(r.name) || [];
       h.push(r.write_bytes_per_sec);
@@ -149,6 +184,8 @@ async function pollRates() {
     }
     const box = document.getElementById("ssdRates");
     if (box) box.innerHTML = rateRows();
+    const pbox = document.getElementById("ssdProcs");
+    if (pbox) pbox.innerHTML = procRateRows();
   } catch (e) {
     const box = document.getElementById("ssdRates");
     if (box)
@@ -161,7 +198,40 @@ setInterval(() => {
   if (ssdVisible() && !document.hidden) pollRates();
 }, 2000);
 
+/** ブラウザーを閉じて、タブごと開き直す。ask=true なら先に聞く */
+async function restartBrowsers(ids, ask = false) {
+  const names = ids.map((id) => ssdState.policy.find((p) => p.id === id)?.name || id);
+  const q = `${names.join("・")} を今すぐ開き直しますか？\n\nブラウザーをいったん終わらせて開き直します。開いていたタブは戻らないことがあります（ブラウザーの「履歴」→「最近閉じたタブ」から開き直せます）。入力の途中の文字（フォームやメールの下書きなど）は消えます。タブを残したいときは、ブラウザーのアドレス欄に restart の文字（例：chrome://restart）を入れて、自分で開き直してください。`;
+  if (!confirm(ask ? `設定を変えました。${q}` : q)) return;
+  const msg = document.getElementById("ssdPolMsg");
+  const done = [];
+  for (const id of ids) {
+    setMsg(msg, `${ssdState.policy.find((p) => p.id === id)?.name || id} を開き直しています…`);
+    try {
+      done.push(await invoke("restart_browser", { id }));
+    } catch (err) {
+      done.push(String(err));
+    }
+  }
+  ssdState.policy = await invoke("get_cache_policy").catch(() => ssdState.policy);
+  const box = document.getElementById("ssdPol");
+  if (box) box.innerHTML = policyRows();
+  setMsg(document.getElementById("ssdPolMsg"), done.join(" / "), "good");
+}
+
 document.getElementById("ssd").addEventListener("click", async (e) => {
+  if (e.target.closest("[data-reset-proc]")) {
+    await invoke("reset_proc_io_totals").catch(() => {});
+    ssdState.procRates = [];
+    const pbox = document.getElementById("ssdProcs");
+    if (pbox) pbox.innerHTML = procRateRows();
+    return;
+  }
+  const rs = e.target.closest("[data-restart]");
+  if (rs) {
+    await restartBrowsers([rs.dataset.restart]);
+    return;
+  }
   const all = e.target.closest("[data-pol-all]");
   const b = e.target.closest("[data-pol]");
   if (!all && !b) return;
@@ -185,3 +255,5 @@ document.getElementById("ssd").addEventListener("click", async (e) => {
   if (errors.length) setMsg(m2, errors.join(" / "), "err");
   else setMsg(m2, small ? "小さくしました。それぞれのブラウザーを開き直すと効きます" : "元に戻しました。ブラウザーを開き直すと効きます", "good");
 });
+  const running = ssdState.policy.filter((p) => ids.includes(p.id) && p.running).map((p) => p.id);
+  if (!errors.length && running.length) await restartBrowsers(running, true);

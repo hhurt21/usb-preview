@@ -216,10 +216,23 @@ pub fn start(app: AppHandle, shared: Shared) {
             let t = now_ms();
             let d = diff(&prev, &cur, &notified, t);
             if !d.changes.is_empty() {
+                let mut flap_alerts: Vec<(String, usize)> = Vec::new();
+                let mut watch_alerts: Vec<String> = Vec::new();
+                let settings = store::load_settings();
+                let names = store::load_names();
                 {
                     let mut c = shared.lock().unwrap();
                     for id in d.removed.iter().chain(&d.blinked) {
-                        c.removals.entry(id.clone()).or_default().push(t);
+                        let list = c.removals.entry(id.clone()).or_default();
+                        list.push(t);
+                        let recent = list.iter().filter(|&&x| t - x < 10 * 60 * 1000).count();
+                        let up = id.to_ascii_uppercase();
+                        if settings.notify_on_flap && recent >= 3 && recent % 3 == 0 {
+                            flap_alerts.push((up.clone(), recent));
+                        }
+                        if settings.watched_ids.iter().any(|w| w == &up) {
+                            watch_alerts.push(up);
+                        }
                     }
                     for id in d.arrived.iter().chain(&d.blinked) {
                         c.arrivals.entry(id.clone()).or_default().push(t);
@@ -228,6 +241,23 @@ pub fn start(app: AppHandle, shared: Shared) {
                 for ch in &d.changes {
                     store::append_history(ch);
                     let _ = app.emit("usb-change", ch);
+                    if ch.kind == "removed" || ch.kind == "blink" {
+                        for it in &ch.items {
+                            let up = it.id.to_ascii_uppercase();
+                            let nm = names.devices.get(&up).cloned().unwrap_or_else(|| it.name.clone());
+                            if let Some((_, cnt)) = flap_alerts.iter().find(|(id, _)| id == &up) {
+                                crate::diag::notify_toast(
+                                    "USB 見張り：くり返し外れています",
+                                    &format!("{nm} が直近10分で {cnt} 回外れました"),
+                                );
+                            } else if watch_alerts.iter().any(|id| id == &up) {
+                                crate::diag::notify_toast(
+                                    "USB 見張り：見張っている機器が外れました",
+                                    &format!("{nm} が外れました"),
+                                );
+                            }
+                        }
+                    }
                 }
             }
             prev = cur;
@@ -258,6 +288,7 @@ mod tests {
             pid: None,
             is_interface: false,
             is_hub: false,
+            removable: false,
         }
     }
 

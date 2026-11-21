@@ -28,6 +28,8 @@ pub struct Dev {
     /// 複合機器の部品 (&MI_xx)
     pub is_interface: bool,
     pub is_hub: bool,
+    /// 安全に取り外せる機器か (CM_DEVCAP_REMOVABLE)
+    pub removable: bool,
 }
 
 fn wide(s: &str) -> Vec<u16> {
@@ -117,6 +119,10 @@ unsafe fn read_dev(h: HDEVINFO, d: &SP_DEVINFO_DATA) -> Option<Dev> {
     let port = location.as_deref().and_then(parse_port);
     let up = id.to_ascii_uppercase();
     let class = prop_str(h, d, &DEVPKEY_Device_Class);
+    let caps = prop_raw(h, d, &DEVPKEY_Device_Capabilities)
+        .and_then(|(_, b)| if b.len() >= 4 { Some(u32::from_le_bytes(b[..4].try_into().ok()?)) } else { None })
+        .unwrap_or(0);
+    let removable = (caps & 0x0000_0004) != 0; // CM_DEVCAP_REMOVABLE
 
     Some(Dev {
         bus_name: prop_str(h, d, &DEVPKEY_Device_BusReportedDeviceDesc),
@@ -133,6 +139,7 @@ unsafe fn read_dev(h: HDEVINFO, d: &SP_DEVINFO_DATA) -> Option<Dev> {
         pid: parse_hex_after(&id, "PID_"),
         is_interface: up.contains("&MI_"),
         is_hub: up.contains("ROOT_HUB") || name.contains("ハブ") || name.to_ascii_lowercase().contains("hub"),
+        removable,
         class,
         name,
         id,
@@ -246,6 +253,68 @@ pub fn set_enabled(id: &str, enable: bool) -> Result<(), String> {
             .map_err(|e| format!("設定できませんでした: {e}"))?;
             SetupDiCallClassInstaller(DIF_PROPERTYCHANGE, h, Some(&d))
                 .map_err(|e| format!("切り替えられませんでした: {e}"))?;
+            Ok(())
+        })();
+        let _ = SetupDiDestroyDeviceInfoList(h);
+        result
+    }
+}
+
+/// 機器を安全に取り外す (Windows の「ハードウェアを安全に取り外してメディアを取り出す」と同じ)。
+/// 管理者の権限は要らない。
+pub fn eject_device(id: &str) -> Result<(), String> {
+    unsafe {
+        let mut devinst = 0u32;
+        let wid = wide(id);
+        let r = CM_Locate_DevNodeW(&mut devinst, PCWSTR(wid.as_ptr()), CM_LOCATE_DEVNODE_NORMAL);
+        if r != CR_SUCCESS {
+            return Err("機器が見つかりませんでした (すでに取り外されているかもしれません)".into());
+        }
+        let mut veto_type = PNP_VETO_TYPE(0);
+        let mut veto_name = [0u16; 260];
+        let er = CM_Request_Device_EjectW(
+            devinst,
+            Some(&mut veto_type),
+            Some(&mut veto_name),
+            0,
+        );
+        if er == CR_SUCCESS {
+            Ok(())
+        } else if er == CR_REMOVE_VETOED {
+            let reason = from_wide(&veto_name);
+            Err(format!(
+                "今は取り外せませんでした (ファイルやアプリが使用中です{})",
+                if reason.is_empty() { String::new() } else { format!("：{reason}") }
+            ))
+        } else {
+            Err(format!("安全に取り外せませんでした (コード {:?})", er.0))
+        }
+    }
+}
+
+/// 今つながっていない過去の USB 機器 (ゴーストデバイス) を Windows の一覧から削除する。
+/// 安全のため、現在接続中の機器は絶対に消さない。管理者の権限が必要。
+pub fn remove_ghost_device(id: &str) -> Result<(), String> {
+    if !id.to_ascii_uppercase().starts_with("USB\\") {
+        return Err("安全のため USB 機器だけ削除できます".into());
+    }
+    if let Some(d) = get(id) {
+        if d.present {
+            return Err("現在つながっている機器は削除できません (先に抜いてください)".into());
+        }
+    }
+    unsafe {
+        let h = SetupDiCreateDeviceInfoList(None, None).map_err(|e| e.to_string())?;
+        let result = (|| {
+            let mut d = SP_DEVINFO_DATA {
+                cbSize: std::mem::size_of::<SP_DEVINFO_DATA>() as u32,
+                ..Default::default()
+            };
+            let wid = wide(id);
+            SetupDiOpenDeviceInfoW(h, PCWSTR(wid.as_ptr()), None, 0, Some(&mut d))
+                .map_err(|e| format!("機器が見つかりませんでした: {e}"))?;
+            SetupDiCallClassInstaller(DIF_REMOVE, h, Some(&d))
+                .map_err(|e| format!("削除できませんでした: {e}"))?;
             Ok(())
         })();
         let _ = SetupDiDestroyDeviceInfoList(h);

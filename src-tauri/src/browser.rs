@@ -74,6 +74,106 @@ const DEFS: &[Def] = &[
         exes: &[r"%ProgramFiles%\Pale Moon\palemoon.exe"], restart: "Pale Moon を全部閉じて開き直す" },
 ];
 
+// ---------- 開き直す ----------
+/// 動いているプロセスのうち、exe の場所が同じ物の PID
+fn running_pids(exe: &Path) -> Vec<u32> {
+    use windows::core::PWSTR;
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::Threading::{
+        OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    let want = exe.to_string_lossy().to_lowercase();
+    let file = exe.file_name().map(|f| f.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let mut out = Vec::new();
+    unsafe {
+        let Ok(snap) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return out };
+        let mut e = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        if Process32FirstW(snap, &mut e).is_ok() {
+            loop {
+                let end = e.szExeFile.iter().position(|&c| c == 0).unwrap_or(e.szExeFile.len());
+                // 名前が同じ物だけ、場所まで確かめる (Chrome と Iron はどちらも chrome.exe なので、場所で見分ける)
+                if String::from_utf16_lossy(&e.szExeFile[..end]).to_lowercase() == file {
+                    if let Ok(h) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, e.th32ProcessID) {
+                        let mut buf = [0u16; 1024];
+                        let mut len = buf.len() as u32;
+                        if QueryFullProcessImageNameW(h, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len).is_ok()
+                            && String::from_utf16_lossy(&buf[..len as usize]).to_lowercase() == want
+                        {
+                            out.push(e.th32ProcessID);
+                        }
+                        let _ = CloseHandle(h);
+                    }
+                }
+                if Process32NextW(snap, &mut e).is_err() {
+                    break;
+                }
+            }
+        }
+        let _ = CloseHandle(snap);
+    }
+    out
+}
+
+fn kill(pids: &[u32]) {
+    use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::Threading::{OpenProcess, TerminateProcess, PROCESS_TERMINATE};
+    for &pid in pids {
+        unsafe {
+            if let Ok(h) = OpenProcess(PROCESS_TERMINATE, false, pid) {
+                let _ = TerminateProcess(h, 1);
+                let _ = CloseHandle(h);
+            }
+        }
+    }
+}
+
+/// ブラウザーを閉じて、開いていたタブごと開き直す。is_admin のときは閉じるだけ (管理者の権限で開かないため)。
+/// 返事は画面に出す説明の文
+pub fn restart(id: &str, is_admin: bool) -> Result<String, String> {
+    let d = DEFS.iter().find(|d| d.id == id).ok_or("知らないブラウザーです")?;
+    let exe = installed_exe(d).ok_or("このブラウザーは入っていません")?;
+    let pids = running_pids(&exe);
+    if pids.is_empty() {
+        return Ok(format!("{} は開いていませんでした。次に開いたときから効きます", d.name));
+    }
+    // 窓を 1 つずつ閉じると、ブラウザーは「タブは空になった」と記録してしまい、開き直してもタブが戻らない
+    // (試験で確かめた)。ブラウザーは開いているタブを少しずつ記録し続けているので、窓を閉じずに直接終わらせ、
+    // 落ちたあとの復元と同じ仕組みでタブを戻す
+    kill(&pids);
+    let mut left = pids.clone();
+    for _ in 0..25 {
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        left = running_pids(&exe);
+        if left.is_empty() {
+            break;
+        }
+        kill(&left);
+    }
+    if !left.is_empty() {
+        return Err(format!("{} を終わらせられませんでした。ご自分で閉じてから開き直してください", d.name));
+    }
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    if is_admin {
+        return Ok(format!(
+            "{} を閉じました。このアプリが管理者で動いているので、安全のため自動では開きません。ご自分で開いてください",
+            d.name
+        ));
+    }
+    let mut cmd = std::process::Command::new(&exe);
+    if matches!(d.method, Method::Policy(_) | Method::Shortcut) {
+        // Chromium 系: 開いていたタブを戻す
+        cmd.arg("--restore-last-session");
+    }
+    if let Method::Shortcut = d.method {
+        cmd.arg(FLAG);
+    }
+    cmd.spawn().map_err(|e| format!("開き直せませんでした: {e}"))?;
+    Ok(format!("{} を開き直しました。開いていたタブは戻らないことがあります（ブラウザーの「履歴」から開き直せます）", d.name))
+}
+
 #[derive(Serialize)]
 pub struct BrowserCache {
     pub id: String,
@@ -87,6 +187,8 @@ pub struct BrowserCache {
     /// 何に書いたか (プロファイルの数・ショートカットの数など)
     pub detail: String,
     pub restart: String,
+    /// 今開いているか
+    pub running: bool,
 }
 
 fn expand(p: &str) -> PathBuf {
@@ -286,6 +388,7 @@ fn status(d: &Def) -> BrowserCache {
         state,
         detail,
         restart: d.restart.into(),
+        running: exe.as_ref().map(|e| !running_pids(e).is_empty()).unwrap_or(false),
     }
 }
 

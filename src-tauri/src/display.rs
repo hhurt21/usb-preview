@@ -91,6 +91,93 @@ pub fn usage() -> Vec<MonitorUsage> {
     out
 }
 
+/// 指定したモニター (gdi_name) の明るさを DDC/CI (VCP 0x10) で変える
+pub fn set_brightness(gdi_name: &str, value: u32) -> Result<(), String> {
+    use windows::Win32::Foundation::{BOOL, LPARAM, RECT};
+    use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, GetMonitorInfoW, HDC, HMONITOR, MONITORINFOEXW};
+
+    unsafe extern "system" fn collect(h: HMONITOR, _: HDC, _: *mut RECT, data: LPARAM) -> BOOL {
+        let v = &mut *(data.0 as *mut Vec<HMONITOR>);
+        v.push(h);
+        BOOL(1)
+    }
+
+    unsafe {
+        let mut mons: Vec<HMONITOR> = Vec::new();
+        let _ = EnumDisplayMonitors(None, None, Some(collect), LPARAM(&mut mons as *mut _ as isize));
+        for hm in mons {
+            let mut mi = MONITORINFOEXW::default();
+            mi.monitorInfo.cbSize = std::mem::size_of::<MONITORINFOEXW>() as u32;
+            if !GetMonitorInfoW(hm, &mut mi as *mut _ as *mut _).as_bool() {
+                continue;
+            }
+            if !from_wide(&mi.szDevice).eq_ignore_ascii_case(gdi_name) {
+                continue;
+            }
+            let mut n = 0u32;
+            if GetNumberOfPhysicalMonitorsFromHMONITOR(hm, &mut n).is_err() || n == 0 {
+                return Err("このモニターは明るさの操作に対応していません".into());
+            }
+            let mut arr = vec![PHYSICAL_MONITOR::default(); n as usize];
+            GetPhysicalMonitorsFromHMONITOR(hm, &mut arr).map_err(|e| e.to_string())?;
+            let pm = arr[0].hPhysicalMonitor;
+            let (mut _cur, mut max) = (0u32, 100u32);
+            let _ = GetVCPFeatureAndVCPFeatureReply(pm, 0x10, None, &mut _cur, Some(&mut max));
+            let clamped = value.min(max.max(1));
+            let ok = SetVCPFeature(pm, 0x10, clamped) != 0;
+            let _ = DestroyPhysicalMonitors(&arr);
+            return if ok {
+                Ok(())
+            } else {
+                Err("明るさを変えられませんでした (モニター側の DDC/CI がオフの可能性があります)".into())
+            };
+        }
+    }
+    Err("モニターが見つかりませんでした".into())
+}
+
+/// DDC/CI に対応しているすべてのモニターの明るさを割合 (0〜100%) でまとめて変える
+pub fn set_all_brightness(pct: u32) -> Result<usize, String> {
+    use windows::Win32::Foundation::{BOOL, LPARAM, RECT};
+    use windows::Win32::Graphics::Gdi::{EnumDisplayMonitors, HDC, HMONITOR};
+
+    unsafe extern "system" fn collect(h: HMONITOR, _: HDC, _: *mut RECT, data: LPARAM) -> BOOL {
+        let v = &mut *(data.0 as *mut Vec<HMONITOR>);
+        v.push(h);
+        BOOL(1)
+    }
+
+    let pct = pct.min(100);
+    let mut changed = 0usize;
+    unsafe {
+        let mut mons: Vec<HMONITOR> = Vec::new();
+        let _ = EnumDisplayMonitors(None, None, Some(collect), LPARAM(&mut mons as *mut _ as isize));
+        for hm in mons {
+            let mut n = 0u32;
+            if GetNumberOfPhysicalMonitorsFromHMONITOR(hm, &mut n).is_err() || n == 0 {
+                continue;
+            }
+            let mut arr = vec![PHYSICAL_MONITOR::default(); n as usize];
+            if GetPhysicalMonitorsFromHMONITOR(hm, &mut arr).is_err() {
+                continue;
+            }
+            let pm = arr[0].hPhysicalMonitor;
+            let (mut _cur, mut max) = (0u32, 0u32);
+            if GetVCPFeatureAndVCPFeatureReply(pm, 0x10, None, &mut _cur, Some(&mut max)) != 0 && max > 0 {
+                let target = (max * pct + 50) / 100;
+                if SetVCPFeature(pm, 0x10, target) != 0 {
+                    changed += 1;
+                }
+            }
+            let _ = DestroyPhysicalMonitors(&arr);
+        }
+    }
+    if changed == 0 {
+        return Err("明るさを変えられるモニターが見つかりませんでした".into());
+    }
+    Ok(changed)
+}
+
 fn from_wide(buf: &[u16]) -> String {
     let end = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     String::from_utf16_lossy(&buf[..end])

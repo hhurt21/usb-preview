@@ -101,3 +101,98 @@ pub fn read_history(limit: usize) -> Vec<serde_json::Value> {
         .filter_map(|l| serde_json::from_str(l).ok())
         .collect()
 }
+
+/// アプリの動作設定 (トレイ常駐・通知・RAM 自動解放など)
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AppSettings {
+    /// 窓を閉じてもタスクトレイに残して裏で見張る
+    #[serde(default)]
+    pub minimize_to_tray: bool,
+    /// 10 分で 3 回以上外れたときに Windows 通知を出す
+    #[serde(default = "default_true")]
+    pub notify_on_flap: bool,
+    /// 外れたらすぐ通知する機器の ID (大文字)
+    #[serde(default)]
+    pub watched_ids: Vec<String>,
+    /// 定期的に RAM を自動で解放する (Microsoft PC Manager のスマートブースト相当)
+    #[serde(default)]
+    pub auto_ram_boost: bool,
+    /// RAM 使用率がこの % 以上になったら自動解放 (0 なら毎回)
+    #[serde(default = "default_ram_threshold")]
+    pub auto_ram_threshold_pct: u32,
+    /// 自動解放をチェック・実行する間隔 (分)
+    #[serde(default = "default_ram_interval")]
+    pub auto_ram_interval_min: u32,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_ram_threshold() -> u32 {
+    80
+}
+
+fn default_ram_interval() -> u32 {
+    15
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            minimize_to_tray: false,
+            notify_on_flap: true,
+            watched_ids: Vec::new(),
+            auto_ram_boost: false,
+            auto_ram_threshold_pct: 80,
+            auto_ram_interval_min: 15,
+        }
+    }
+}
+
+fn settings_path() -> PathBuf {
+    data_dir().join("settings.json")
+}
+
+pub fn load_settings() -> AppSettings {
+    std::fs::read_to_string(settings_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn save_settings(s: &AppSettings) -> Result<AppSettings, String> {
+    let _g = FILE_LOCK.lock().unwrap();
+    let mut clean = s.clone();
+    clean.watched_ids = clean
+        .watched_ids
+        .into_iter()
+        .map(|id| id.to_ascii_uppercase())
+        .collect();
+    clean.watched_ids.sort();
+    clean.watched_ids.dedup();
+    let txt = serde_json::to_string_pretty(&clean).map_err(|e| e.to_string())?;
+    let tmp = settings_path().with_extension("json.tmp");
+    std::fs::write(&tmp, txt).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, settings_path()).map_err(|e| e.to_string())?;
+    Ok(clean)
+}
+
+fn baseline_path() -> PathBuf {
+    data_dir().join("baseline.json")
+}
+
+pub fn load_baseline() -> Option<serde_json::Value> {
+    let _g = FILE_LOCK.lock().unwrap();
+    std::fs::read_to_string(baseline_path())
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+}
+
+pub fn save_baseline(v: &serde_json::Value) -> Result<(), String> {
+    let _g = FILE_LOCK.lock().unwrap();
+    let txt = serde_json::to_string_pretty(v).map_err(|e| e.to_string())?;
+    let tmp = baseline_path().with_extension("json.tmp");
+    std::fs::write(&tmp, txt).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, baseline_path()).map_err(|e| e.to_string())
+}
