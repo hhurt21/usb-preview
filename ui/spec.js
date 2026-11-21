@@ -1,4 +1,5 @@
-// PC のスペックタブ。map.js の mapState・loadOverviewData・mapDev・mapName・CONN・fmtBytes も使う。
+// PC のスペックタブ。map.js の mapState・loadOverviewData・mapDev・mapName・CONN・fmtBytes・isPluggedUsb も使う。
+// アップグレードの提案は、部品の名前を押したときだけ、その部品の箱の中に出す (まずスペックを見てもらうため)。
 
 const MEM_TYPE = {
   20: "DDR",
@@ -12,7 +13,7 @@ const MEM_TYPE = {
   34: "DDR5",
   35: "LPDDR5",
 };
-const specState = { data: null, usage: null, loading: false };
+const specState = { data: null, usage: null, loading: false, open: new Set() };
 
 /** CPU・GPU の発売時期の目安 (上から順に当てる)。このアプリを作った 2026 年時点の情報 */
 const RELEASES = [
@@ -73,9 +74,10 @@ function fmtSpan(hours) {
   if (days < 1) return `${Math.round(hours)} 時間`;
   if (days < 31) return `${Math.floor(days)} 日`;
   const months = Math.floor(days / 30.44);
-  const y = Math.floor(months / 12),
-    m = months % 12;
-  return y ? `${y}年${m ? `${m}か月` : ""}` : `${m}か月`;
+  const y = Math.floor(months / 12);
+  const m = months % 12;
+  if (!y) return `${m}か月`;
+  return m ? `${y}年${m}か月` : `${y}年`;
 }
 const hoursSince = (date) => (Date.now() - new Date(date).getTime()) / 3600000;
 const fmtHours = (h) => `${Math.round(h).toLocaleString("ja-JP")} 時間`;
@@ -83,8 +85,8 @@ const fmtHours = (h) => `${Math.round(h).toLocaleString("ja-JP")} 時間`;
 function uptimeText(iso) {
   if (!iso) return "";
   const ms = Date.now() - new Date(iso).getTime();
-  const h = Math.floor(ms / 3600000),
-    d = Math.floor(h / 24);
+  const h = Math.floor(ms / 3600000);
+  const d = Math.floor(h / 24);
   return d
     ? `${d} 日 ${h % 24} 時間`
     : `${h} 時間 ${Math.floor((ms % 3600000) / 60000)} 分`;
@@ -92,6 +94,8 @@ function uptimeText(iso) {
 
 const physicalGpus = () =>
   (specState.data?.gpu || []).filter((g) => !/^ROOT\\/i.test(g.pnp || ""));
+const badUsb = () =>
+  (state.devices || []).filter((d) => d.present && d.status === "problem");
 
 // ---------- アップグレードの提案 ----------
 const LEVEL = {
@@ -100,16 +104,16 @@ const LEVEL = {
   ok: { label: "今のままで十分", cls: "ok" },
 };
 
+/** 提案の一覧。key はどの部品の箱に出すか (disk / memory / cpu / gpu / board / screen / usb / net) */
 function suggestions() {
   const s = specState.data;
   if (!s) return [];
   const out = [];
+  const add = (key, x) => out.push({ key, ...x });
   const board = [s.board?.maker, s.board?.product].filter(Boolean).join(" ");
-  const pcie = /X870|B850|X670|B650/i.test(board)
-    ? "PCIe 5.0"
-    : /X570|B550|Z[4-8]90|B[4-8]60/i.test(board)
-      ? "PCIe 4.0"
-      : "";
+  let pcie = "";
+  if (/X870|B850|X670|B650/i.test(board)) pcie = "PCIe 5.0";
+  else if (/X570|B550|Z[4-8]90|B[4-8]60/i.test(board)) pcie = "PCIe 4.0";
   const mons = mapState.ov?.monitors || [];
   const maxHz = Math.max(0, ...mons.map((m) => m.hz));
   const maxW = Math.max(0, ...mons.map((m) => m.width));
@@ -118,68 +122,72 @@ function suggestions() {
   for (const v of s.volumes || []) {
     if (!v.size) continue;
     const r = v.free / v.size;
-    if (r < 0.2) {
-      out.push({
-        level: r < 0.1 ? "now" : "maybe",
-        title: `${v.letter}: ドライブの空きが少ない（残り ${Math.round(r * 100)}%・${fmtBytes(v.free)}）`,
-        why: "空きが1〜2割を切ると、Windows やゲームの更新が失敗したり、動きが遅くなったりします。",
-        what: `まずは「設定 → システム → ストレージ」で要らないファイルを消してください。それでも足りなければ、2TB ほどの NVMe SSD を足すのがおすすめです${pcie ? `（このマザーボードは ${pcie} の M.2 に対応）` : ""}。空いている M.2 の口があるかは、マザーボードの説明書で確かめてください。`,
-      });
-    }
+    if (r >= 0.2) continue;
+    add("disk", {
+      level: r < 0.1 ? "now" : "maybe",
+      title: `${v.letter}: ドライブの空きが少ない（残り ${Math.round(r * 100)}%・${fmtBytes(v.free)}）`,
+      why: "空きが1〜2割を切ると、Windows やゲームの更新が失敗したり、動きが遅くなったりします。",
+      what: `まずは「設定 → システム → ストレージ」で要らないファイルを消してください。それでも足りなければ、2TB ほどの NVMe SSD を足すのがおすすめです${pcie ? `（このマザーボードは ${pcie} の M.2 に対応）` : ""}。空いている M.2 の口があるかは、マザーボードの説明書で確かめてください。`,
+    });
   }
 
-  // ディスクの健康 (SMART が取れたとき)
+  // ディスクの健康 (健康記録が取れたとき)
+  const unsafeDisks = [];
   for (const d of s.disks || []) {
     if (d.health && d.health !== "Healthy")
-      out.push({
+      add("disk", {
         level: "now",
         title: `${d.name} の状態が「${d.health}」`,
         why: "Windows がディスクの不調を見つけています。",
         what: "大事なファイルを今すぐ別の場所にコピーして、ディスクの交換を考えてください。",
       });
     if (d.critical)
-      out.push({
+      add("disk", {
         level: "now",
         title: `${d.name} が警告を出している`,
         why: "SSD 自身が、温度・予備の領域・読み書きの異常などの警告を記録しています。",
         what: "大事なファイルを今すぐ別の場所にコピーして、交換を考えてください。",
       });
     if (d.media_errors)
-      out.push({
+      add("disk", {
         level: "now",
         title: `${d.name} に読み書きの失敗が ${d.media_errors} 回`,
         why: "データが正しく読み書きできなかった記録があります。",
         what: "バックアップを取って、様子を見ながら交換を考えてください。",
       });
     if (d.wear != null && d.wear >= 80)
-      out.push({
+      add("disk", {
         level: "now",
         title: `${d.name} の消耗が ${d.wear}%`,
         why: "SSD は書き込める量に上限があり、100% に近づくと壊れやすくなります。",
         what: "バックアップを取って、新しい SSD への交換を考えてください。",
       });
-    else if (d.wear != null && d.wear >= 50)
-      out.push({
+    else if (d.wear != null && d.wear >= 50) {
+      const perDay = d.written && d.hours ? d.written / (d.hours / 24) : 0;
+      add("disk", {
         level: "maybe",
         title: `${d.name} の消耗が ${d.wear}%（寿命の半分を使った）`,
-        why: `SSD は書き込める量に上限があります。今までに ${fmtBytes(d.written) || "多く"} 書き込んでいます。すぐ壊れるわけではありませんが、このまま使うと何年かで交換の時期が来ます。`,
-        what: "大事なファイルは別の場所にもコピーしておき、次に SSD を買うときの候補にしてください。動画の編集先やゲームの置き場など、書き込みが多い物を別の SSD に分けると長持ちします。",
+        why: `SSD は書き込める量に上限があります。今までに ${fmtBytes(d.written) || "多く"} 書き込んでいます${perDay ? `（電源が入っていた日で割ると 1 日あたり約 ${Math.round(perDay / 1e9)} GB）` : ""}。すぐ壊れるわけではありませんが、このまま使うと何年かで交換の時期が来ます。`,
+        what: "大事なファイルは別の場所にもコピーしておき、次に SSD を買うときの候補にしてください。録画・動画の編集先・ゲームの置き場など、書き込みが多い物を別の SSD に分けると長持ちします。何が書き込んでいるかは、Windows の「リソース モニター」の「ディスク」タブで見られます。",
       });
-    if (d.unsafe && d.starts >= 20 && d.unsafe / d.starts >= 0.5)
-      out.push({
-        level: "maybe",
-        title: `${d.name} が正しい手順で止まらなかった回数が多い（${d.unsafe} / ${d.starts} 回）`,
-        why: "停電・電源ボタンの長押し・コンセントを抜くなどで増えます。Windows の高速スタートアップや休止状態でも数えられることがあり、必ず問題があるとは限りません。",
-        what: "PC を止めるときは「スタート → 電源 → シャットダウン」を使ってください。停電が多い場所なら UPS（無停電電源装置）も考えてください。",
-      });
+    }
     if (d.temp != null && d.temp >= 70)
-      out.push({
+      add("disk", {
         level: "maybe",
         title: `${d.name} が熱い（${d.temp}℃）`,
         why: "熱いと速さが落ちたり、寿命が縮んだりします。",
         what: "M.2 用のヒートシンクを付けるか、ケースの風の流れを見直してください。",
       });
+    if (d.unsafe && d.starts >= 20 && d.unsafe / d.starts >= 0.5)
+      unsafeDisks.push(`${d.name}（${d.unsafe} / ${d.starts} 回）`);
   }
+  if (unsafeDisks.length)
+    add("disk", {
+      level: "maybe",
+      title: `正しい手順で止まらなかった回数が多い：${unsafeDisks.join("・")}`,
+      why: "停電・電源ボタンの長押し・コンセントを抜くなどで増えます。Windows の高速スタートアップや休止状態でも数えられることがあり、必ず問題があるとは限りません。",
+      what: "PC を止めるときは「スタート → 電源 → シャットダウン」を使ってください。停電が多い場所なら UPS（無停電電源装置）も考えてください。",
+    });
 
   // メモリ
   const m = s.memory || {};
@@ -187,21 +195,21 @@ function suggestions() {
   const totalGb = m.total / 1024 ** 3;
   const free = m.slots ? m.slots - mods.length : 0;
   if (totalGb < 15) {
-    out.push({
+    add("memory", {
       level: "now",
       title: `メモリが少ない（${gb(m.total)}）`,
       why: "今のゲームやブラウザーは 16 GB 以上あると安心です。",
       what: `同じ種類（${[...new Set(mods.map((x) => MEM_TYPE[x.kind]).filter(Boolean))].join("・") || "今と同じ規格"}）のメモリを足して、16〜32 GB にしてください。`,
     });
   } else if (mods.length === 1) {
-    out.push({
+    add("memory", {
       level: "maybe",
       title: "メモリが1枚だけ",
       why: "メモリは2枚1組で使うと速くなります（デュアルチャネル）。",
       what: "同じ容量・同じ速さのメモリをもう1枚足してください。",
     });
   } else if (totalGb < 31) {
-    out.push({
+    add("memory", {
       level: "maybe",
       title: `メモリ ${gb(m.total)}`,
       why: "ゲームをしながら配信や通話をすると、足りなくなることがあります。",
@@ -209,7 +217,7 @@ function suggestions() {
     });
   } else {
     const part = mods[0]?.part;
-    out.push({
+    add("memory", {
       level: "ok",
       title: `メモリ ${gb(m.total)}`,
       why: "ゲーム・配信・通話を同時にしても足りる量です。",
@@ -220,13 +228,14 @@ function suggestions() {
     });
   }
   // XMP / EXPO が切れていないか (型番に書いてある速さより遅く動いている)
-  for (const x of mods.slice(0, 1)) {
+  const first = mods[0];
+  if (first) {
     const rated = Number(
-      (x.part || "").match(/(2[4-9]|3[0-9]|[4-8][0-9])00/)?.[0],
+      (first.part || "").match(/(2[4-9]|3\d|[4-8]\d)00/)?.[0],
     );
-    const now = x.configured || x.speed;
+    const now = first.configured || first.speed;
     if (rated && now && now + 100 < rated)
-      out.push({
+      add("memory", {
         level: "now",
         title: `メモリが本来より遅く動いている（${now} MT/s、型番では ${rated}）`,
         why: "BIOS の XMP（AMD では EXPO / DOCP）が切れていると、メモリが遅い設定のまま動きます。",
@@ -239,10 +248,11 @@ function suggestions() {
   if (cpu) {
     const am4 = /AM4/i.test(cpu.socket || "");
     const x3d = /X3D/i.test(cpu.name);
+    const short = cpu.name.replace(/ \d+-Core Processor/i, "");
     if (am4 && !x3d) {
-      out.push({
+      add("cpu", {
         level: maxHz >= 144 ? "maybe" : "ok",
-        title: `CPU（${cpu.name.replace(/ \d+-Core Processor/i, "")}）`,
+        title: `CPU（${short}）`,
         why:
           maxHz >= 144
             ? `${Math.round(maxHz)}Hz の画面を使っているので、ゲームの fps を上げると効果が見えやすいです。`
@@ -250,20 +260,27 @@ function suggestions() {
         what: "マザーボード（AM4）とメモリをそのまま使える一番の強化は、Ryzen 7 5700X3D / 5800X3D への交換です（ゲームの fps が上がりやすい CPU）。交換の前に BIOS の更新が要ることがあります。もっと上を狙うなら AM5（Ryzen 7 9800X3D など）ですが、マザーボードと DDR5 メモリも買い替えになります。",
       });
     } else if (am4 && x3d) {
-      out.push({
+      add("cpu", {
         level: "ok",
-        title: `CPU（${cpu.name}）`,
+        title: `CPU（${short}）`,
         why: "AM4 では一番ゲームに強い部類の CPU です。",
         what: "これ以上は AM5 への乗り換え（マザーボード・メモリも交換）になります。",
       });
     } else {
       const rel = releaseOf(cpu.name);
       if (rel && hoursSince(rel) / 8766 >= 6)
-        out.push({
+        add("cpu", {
           level: "maybe",
           title: `CPU が発売から約 ${fmtSpan(hoursSince(rel))}`,
           why: "新しいゲームやアプリで重く感じることがあります。",
           what: "CPU だけでなく、マザーボードとメモリも一緒に新しくすることが多いです。",
+        });
+      else
+        add("cpu", {
+          level: "ok",
+          title: `CPU（${short}）`,
+          why: "今のところ十分な速さです。",
+          what: "",
         });
     }
   }
@@ -274,14 +291,14 @@ function suggestions() {
     const rel = releaseOf(g.name);
     const age = rel ? hoursSince(rel) / 8766 : 0;
     if (vramGb && vramGb < 7.5) {
-      out.push({
+      add("gpu", {
         level: "now",
         title: `GPU のビデオメモリが少ない（${gbExact(g.vram)}）`,
-        why: "今のゲームは 8 GB 以上を求めることが多く、足りないと画質を下げても カクつきます。",
+        why: "今のゲームは 8 GB 以上を求めることが多く、足りないと画質を下げてもカクつきます。",
         what: "12〜16 GB の GPU（RX 9060 XT 16GB / RTX 5060 Ti 16GB クラス）がおすすめです。",
       });
     } else if (maxW > 1920 || (maxHz >= 240 && age >= 4)) {
-      out.push({
+      add("gpu", {
         level: "maybe",
         title: `GPU（${g.name}${rel ? `・発売から約 ${fmtSpan(hoursSince(rel))}` : ""}）`,
         why:
@@ -291,7 +308,7 @@ function suggestions() {
         what: "RX 9070 XT / RTX 5070 Ti クラスにすると、高い fps を保ちやすくなります。電源の容量（750W 以上が目安）とケースの長さも確かめてください。",
       });
     } else {
-      out.push({
+      add("gpu", {
         level: "ok",
         title: `GPU（${g.name}）`,
         why: `今の画面（${maxW || "?"} 幅・${Math.round(maxHz)}Hz）なら十分な力です。`,
@@ -299,7 +316,7 @@ function suggestions() {
       });
     }
     if (g.driver_date && hoursSince(g.driver_date) / 24 > 365)
-      out.push({
+      add("gpu", {
         level: "maybe",
         title: `GPU のドライバーが古い（${g.driver_date}）`,
         why: "新しいゲームの不具合直しや速さの改善が入っていないことがあります。",
@@ -309,7 +326,7 @@ function suggestions() {
 
   // BIOS
   if (s.bios?.date && hoursSince(s.bios.date) / 8766 >= 3) {
-    out.push({
+    add("board", {
       level: "maybe",
       title: `BIOS が古い（${s.bios.date}・${s.bios.version || ""}）`,
       why: "BIOS の更新には、不具合や安全の問題の直し、新しい CPU への対応が入っています。",
@@ -321,20 +338,25 @@ function suggestions() {
   for (const mo of mons) {
     const u = (specState.usage || []).find((x) => x.gdi_name === mo.gdi_name);
     if (u?.usage_hours >= 30000)
-      out.push({
+      add("screen", {
         level: "maybe",
         title: `${mo.name} を長く使っている（${fmtHours(u.usage_hours)}）`,
         why: "画面の明るさ（バックライト）は 3〜5万時間ほどで暗くなってくると言われます。",
         what: "暗く感じたら、明るさを上げるか買い替えを考えてください。",
       });
+    else if (u?.usage_hours)
+      add("screen", {
+        level: "ok",
+        title: `${mo.name}（${fmtSpan(u.usage_hours)}使用）`,
+        why: "バックライトが暗くなってくる目安（3〜5万時間）まで、まだ余裕があります。",
+        what: "",
+      });
   }
 
   // USB の不調
-  const bad = (state.devices || []).filter(
-    (d) => d.present && d.status === "problem",
-  );
+  const bad = badUsb();
   if (bad.length)
-    out.push({
+    add("usb", {
       level: "maybe",
       title: `うまく動いていない USB 機器が ${bad.length} 台`,
       why: "コード43 などのエラーは、ケーブル・差し込み口・機器の故障・電力不足が原因のことが多いです。",
@@ -343,33 +365,30 @@ function suggestions() {
 
   // ネットワーク
   for (const n of s.nets || []) {
-    const mbps = parseFloat(n.speed) * (/Gbps/i.test(n.speed) ? 1000 : 1);
+    const mbps =
+      Number.parseFloat(n.speed) * (/Gbps/i.test(n.speed) ? 1000 : 1);
     if (n.status === "Up" && mbps && mbps < 1000)
-      out.push({
+      add("net", {
         level: "maybe",
         title: `有線 LAN が ${n.speed} でつながっている`,
         why: "この LAN は 1 Gbps 以上に対応していることが多く、ケーブルが古いと遅くなります。",
         what: "カテゴリ 6（CAT6）以上の LAN ケーブルに替えてみてください。",
       });
+    else if (n.status === "Up")
+      add("net", {
+        level: "ok",
+        title: `${n.name}（${n.speed}）`,
+        why: "家のネットの速さを出し切れる速さです。",
+        what: "",
+      });
   }
 
-  // 「正しい手順で止まらなかった」はディスクごとに出さず、1つにまとめる
-  const unsafe = out.filter((x) =>
-    x.title.includes("正しい手順で止まらなかった"),
-  );
-  if (unsafe.length > 1) {
-    const names = unsafe.map((x) =>
-      x.title.replace(/ が正しい手順.*（(.*)）$/, "（$1）"),
-    );
-    unsafe[0].title = `ディスクが正しい手順で止まらなかった回数が多い：${names.join("・")}`;
-    for (const x of unsafe.slice(1)) out.splice(out.indexOf(x), 1);
-  }
   const order = { now: 0, maybe: 1, ok: 2 };
   return out.sort((a, b) => order[a.level] - order[b.level]);
 }
 
 // ---------- 表に出す中身 ----------
-/** [見出し, 中身, 補足, 割合(バー)] の配列を作る。コピーする文字にも使う */
+/** 行は [見出し, 中身, 補足, 割合(バー), 提案の key]。提案の key がある行は、中身を押すとその部品の提案が開く */
 function specSections() {
   const s = specState.data;
   const out = [];
@@ -396,7 +415,7 @@ function specSections() {
     icon: "cpu",
     title: "CPU",
     rows: (s.cpu || []).flatMap((c) => [
-      ["名前", c.name],
+      ["名前", c.name, "", null, "cpu"],
       ["コア・スレッド", `${c.cores} コア / ${c.threads} スレッド`],
       ["基本の速さ", c.mhz ? `${(c.mhz / 1000).toFixed(1)} GHz` : ""],
       [
@@ -419,7 +438,7 @@ function specSections() {
     icon: "memory",
     title: "メモリ",
     rows: [
-      ["合計", gb(m.total), types],
+      ["合計", gb(m.total), types, null, "memory"],
       [
         "差してある数",
         m.slots
@@ -438,6 +457,8 @@ function specSections() {
         [x.maker && x.maker !== "Unknown" ? x.maker : "", x.part]
           .filter(Boolean)
           .join(" "),
+        null,
+        "memory",
       ]),
     ],
   });
@@ -450,11 +471,16 @@ function specSections() {
       [
         "マザーボード",
         [s.board?.maker, s.board?.product].filter(Boolean).join(" "),
+        "",
+        null,
+        "board",
       ],
       [
         "BIOS",
         [s.bios?.maker, s.bios?.version].filter(Boolean).join(" "),
         s.bios?.date,
+        null,
+        "board",
       ],
     ],
   });
@@ -467,9 +493,9 @@ function specSections() {
     title: "GPU",
     rows: [
       ...gpus.flatMap((g) => [
-        ["名前", g.name],
+        ["名前", g.name, "", null, "gpu"],
         ["ビデオメモリ", g.vram ? gbExact(g.vram) : ""],
-        ["ドライバー", g.driver, g.driver_date],
+        ["ドライバー", g.driver, g.driver_date, null, "gpu"],
       ]),
       ...(vgpus
         ? [
@@ -494,12 +520,15 @@ function specSections() {
           .filter(Boolean)
           .join("・"),
         d.health === "Healthy" ? "正常" : d.health,
+        null,
+        "disk",
       ]),
       ...(s.volumes || []).map((v) => [
         `${v.letter}: ドライブ`,
         `空き ${fmtBytes(v.free)} / ${fmtBytes(v.size)}`,
         v.fs,
         v.size ? v.free / v.size : null,
+        "disk",
       ]),
     ],
   });
@@ -515,6 +544,9 @@ function specSections() {
         : n.status === "Disconnected"
           ? "つながっていない"
           : n.status,
+      "",
+      null,
+      "net",
     ]),
   });
 
@@ -529,7 +561,30 @@ function specSections() {
         [CONN[x.connection], x.primary ? "メイン" : ""]
           .filter(Boolean)
           .join("・"),
+        null,
+        "screen",
       ]),
+    });
+    const plugged = mapState.ov.devices.filter(isPluggedUsb).length;
+    const bad = badUsb().length;
+    out.push({
+      key: "usb",
+      icon: "usb",
+      title: "USB",
+      rows: [
+        [
+          "つながっている機器",
+          `${plugged} 台`,
+          "くわしくは「全体図」と「一覧」タブ",
+        ],
+        [
+          "うまく動いていない機器",
+          bad ? `${bad} 台` : "なし",
+          "",
+          null,
+          bad ? "usb" : null,
+        ],
+      ],
     });
   }
   const a = mapState.audio;
@@ -565,42 +620,49 @@ function specSections() {
   const life = [];
   for (const mo of mapState.ov?.monitors || []) {
     const u = (specState.usage || []).find((x) => x.gdi_name === mo.gdi_name);
-    if (u?.usage_hours)
+    if (u?.usage_hours) {
+      const br =
+        u.brightness != null
+          ? `・今の明るさ ${Math.round((u.brightness / (u.brightness_max || 100)) * 100)}%`
+          : "";
       life.push([
-        `${mo.name}`,
+        mo.name,
         `画面がついていた時間 ${fmtSpan(u.usage_hours)}`,
-        `${fmtHours(u.usage_hours)}${u.brightness != null ? `・今の明るさ ${Math.round((u.brightness / (u.brightness_max || 100)) * 100)}%` : ""}`,
+        fmtHours(u.usage_hours) + br,
+        null,
+        "screen",
       ]);
-    else if (specState.usage)
+    } else if (specState.usage)
       life.push([
-        `${mo.name}`,
+        mo.name,
         "記録なし",
         "このモニターは使用時間を PC に教えていません",
       ]);
   }
   const smart = (s.disks || []).filter((d) => d.hours != null);
   for (const d of smart) {
+    const notes = [
+      fmtHours(d.hours),
+      d.temp != null && `${d.temp}℃`,
+      d.wear != null && `消耗 ${d.wear}%`,
+      d.starts && `電源を入れた回数 ${d.starts.toLocaleString("ja-JP")} 回`,
+      d.written && `書き込んだ量 ${fmtBytes(d.written)}`,
+      d.unsafe &&
+        `正しい手順で止まらなかった回数 ${d.unsafe.toLocaleString("ja-JP")} 回`,
+    ];
     life.push([
       d.name,
       `電源が入っていた時間 ${fmtSpan(d.hours)}`,
-      [
-        fmtHours(d.hours),
-        d.temp != null && `${d.temp}℃`,
-        d.wear != null && `消耗 ${d.wear}%`,
-        d.starts && `電源を入れた回数 ${d.starts.toLocaleString("ja-JP")} 回`,
-        d.written && `書き込んだ量 ${fmtBytes(d.written)}`,
-        d.unsafe &&
-          `正しい手順で止まらなかった回数 ${d.unsafe.toLocaleString("ja-JP")} 回`,
-      ]
-        .filter(Boolean)
-        .join("・"),
+      notes.filter(Boolean).join("・"),
+      null,
+      "disk",
     ]);
   }
   if (!smart.length && (s.disks || []).length)
     life.push([
       "ディスク",
       "管理者で開くと見られます",
-      "電源が入っていた時間・温度・消耗度（SMART）は、管理者の権限が要ります",
+      "電源が入っていた時間・温度・消耗度は、管理者の権限が要ります",
     ]);
   const cpuRel = releaseOf((s.cpu || [])[0]?.name);
   if (cpuRel)
@@ -613,7 +675,7 @@ function specSections() {
     const r = releaseOf(g.name);
     if (r)
       life.push([
-        `GPU の発売から`,
+        "GPU の発売から",
         `約 ${fmtSpan(hoursSince(r))}`,
         `${r.replace("-", " 年 ")} 月ごろ発売（目安）`,
       ]);
@@ -641,61 +703,74 @@ function specSections() {
   return out.filter((sec) => sec.rows.length);
 }
 
-function renderSpec() {
-  const el = document.getElementById("spec");
-  if (!specState.data) return;
-  const sug = suggestions();
-  const sugHtml = `<section class="scard sug-card">
-    <h3><span class="mic-wrap big">${iconSvg("pc", 32)}</span>アップグレードの提案</h3>
-    <p class="sub">この PC を調べた結果からの目安です。製品名はこのアプリを作った時点（2026年）の物で、もっと新しい製品が出ていることがあります。値段と在庫はお店で確かめてください。</p>
-    <div class="sug-list">${sug
-      .map(
-        (x) => `<div class="sug ${LEVEL[x.level].cls}">
+/** 部品の名前ではない見出し (この行は中身のほうを押せるようにする) */
+const GENERIC_LABEL =
+  /^(名前|合計|\d+ 枚目|マザーボード|BIOS|ドライバー|うまく動いていない機器|[A-Z]: ドライブ)$/;
+
+function sugHtml(list) {
+  return list
+    .map(
+      (x) => `<div class="sug ${LEVEL[x.level].cls}">
       <div class="sug-head"><span class="sug-level">${LEVEL[x.level].label}</span><b>${esc(x.title)}</b></div>
       <div class="sug-why">${esc(x.why)}</div>
       ${x.what ? `<div class="sug-what">${esc(x.what)}</div>` : ""}
     </div>`,
-      )
-      .join("")}</div>
-  </section>`;
-  el.innerHTML =
-    sugHtml +
-    specSections()
-      .map(
-        (sec) => `<section class="scard">
-    <h3><span class="mic-wrap big">${iconSvg(sec.icon, 32)}</span>${esc(sec.title)}</h3>
-    <dl class="skv">${sec.rows
-      .map(
-        ([k, v, note, ratio]) =>
-          `<dt>${esc(k)}</dt><dd><b>${esc(v)}</b>${note ? `<span class="sub">　${esc(note)}</span>` : ""}${
+    )
+    .join("");
+}
+
+function renderSpec() {
+  const el = document.getElementById("spec");
+  if (!specState.data) return;
+  const sug = suggestions();
+  const hasSug = (key) => sug.some((x) => x.key === key);
+  el.innerHTML = specSections()
+    .map((sec) => {
+      const rows = sec.rows
+        .map(([k, v, note, ratio, sk]) => {
+          // 見出しが部品の名前の行 (ディスク名・モニター名など) は見出しを、「名前」「合計」などの行は中身を押せるようにする
+          const link = (text) =>
+            `<button class="slink" data-sug="${sk}" aria-expanded="${specState.open.has(sec.key + "|" + sk)}">${esc(text)}</button>`;
+          const clickable = sk && hasSug(sk);
+          const nameInLabel = clickable && !GENERIC_LABEL.test(k);
+          const label = nameInLabel ? link(k) : esc(k);
+          const val = clickable && !nameInLabel ? link(v) : `<b>${esc(v)}</b>`;
+          const bar =
             ratio != null
               ? `<span class="sbar ${ratio < 0.1 ? "low" : ""}" role="meter" aria-label="空きの割合" aria-valuenow="${Math.round(ratio * 100)}" aria-valuemin="0" aria-valuemax="100"><span style="width:${Math.round(ratio * 100)}%"></span></span>`
-              : ""
-          }</dd>`,
-      )
-      .join("")}</dl>
-  </section>`,
-      )
-      .join("");
+              : "";
+          return `<dt>${label}</dt><dd>${val}${note ? `<span class="sub">　${esc(note)}</span>` : ""}${bar}</dd>`;
+        })
+        .join("");
+      const opened = [...specState.open]
+        .filter((o) => o.startsWith(sec.key + "|"))
+        .map((o) => o.split("|")[1]);
+      const panel = opened.length
+        ? `<div class="sug-panel"><h4>アップグレードの提案</h4>${sugHtml(sug.filter((x) => opened.includes(x.key)))}<p class="sub">製品名はこのアプリを作った時点（2026年）の目安です。値段と在庫はお店で確かめてください。</p></div>`
+        : "";
+      return `<section class="scard" data-sec="${sec.key}">
+      <h3><span class="mic-wrap big">${iconSvg(sec.icon, 32)}</span>${esc(sec.title)}</h3>
+      <dl class="skv">${rows}</dl>${panel}
+    </section>`;
+    })
+    .join("");
 }
 
 function specText() {
+  const body = specSections()
+    .map(
+      (sec) =>
+        `【${sec.title}】\n` +
+        sec.rows
+          .map(([k, v, note]) => `${k}：${v}${note ? `（${note}）` : ""}`)
+          .join("\n"),
+    )
+    .join("\n\n");
   const sug = suggestions().filter((x) => x.level !== "ok");
-  const head = sug.length
-    ? `【アップグレードの提案】\n${sug.map((x) => `・${LEVEL[x.level].label}：${x.title}`).join("\n")}\n\n`
+  const tail = sug.length
+    ? `\n\n【アップグレードの提案（目安）】\n${sug.map((x) => `・${LEVEL[x.level].label}：${x.title}`).join("\n")}`
     : "";
-  return (
-    head +
-    specSections()
-      .map(
-        (sec) =>
-          `【${sec.title}】\n` +
-          sec.rows
-            .map(([k, v, note]) => `${k}：${v}${note ? `（${note}）` : ""}`)
-            .join("\n"),
-      )
-      .join("\n\n")
-  );
+  return body + tail;
 }
 
 async function loadSpec(force) {
@@ -717,14 +792,16 @@ async function loadSpec(force) {
     for (const d of s.disks || []) {
       const h = (nvme || []).find((x) => x.number === d.number);
       if (!h) continue;
-      d.hours = h.power_on_hours;
-      d.temp = h.temp_c || d.temp;
-      d.wear = h.percent_used;
-      d.starts = h.power_cycles;
-      d.written = h.written_bytes;
-      d.unsafe = h.unsafe_shutdowns;
-      d.media_errors = h.media_errors;
-      d.critical = h.critical_warning;
+      Object.assign(d, {
+        hours: h.power_on_hours,
+        temp: h.temp_c || d.temp,
+        wear: h.percent_used,
+        starts: h.power_cycles,
+        written: h.written_bytes,
+        unsafe: h.unsafe_shutdowns,
+        media_errors: h.media_errors,
+        critical: h.critical_warning,
+      });
     }
     specState.data = s;
     specState.usage = usage;
@@ -737,6 +814,14 @@ async function loadSpec(force) {
   }
 }
 
+document.getElementById("spec").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-sug]");
+  if (!b) return;
+  const id = b.closest("[data-sec]").dataset.sec + "|" + b.dataset.sug;
+  if (specState.open.has(id)) specState.open.delete(id);
+  else specState.open.add(id);
+  renderSpec();
+});
 document
   .getElementById("sReload")
   .addEventListener("click", () => loadSpec(true));
